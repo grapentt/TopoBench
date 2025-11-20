@@ -1,0 +1,37 @@
+# Dataset loader config for ENZYMES
+loader:
+  _target_: topobench.data.loaders.TUDatasetLoader
+  parameters: 
+    data_domain: graph
+    data_type: TUDataset
+    data_name: ENZYMES
+    data_dir: ${paths.data_dir}/${dataset.loader.parameters.data_domain}/${dataset.loader.parameters.data_type}
+
+# Dataset parameters
+parameters:
+  num_features:
+    - 3 # initial node features (categorical)
+    - 0 # no edge features
+  num_classes: 6
+  task: classification
+  loss_type: cross_entropy
+  monitor_metric: accuracy
+  task_level: graph
+  # Lifting parameters
+  max_dim_if_lifted: 3
+  preserve_edge_attr_if_lifted: False
+
+# Splits
+split_params:
+  learning_setting: inductive
+  data_split_dir: ${paths.data_dir}/data_splits/${dataset.loader.parameters.data_name}
+  data_seed: 0
+  split_type: random
+  train_prop: 0.6
+  val_prop: 0.2
+
+# Dataloader parameters
+dataloader_params:
+  batch_size: 32
+  num_workers: 0
+  pin_memory: False
