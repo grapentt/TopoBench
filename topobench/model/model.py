@@ -3,7 +3,11 @@
 from typing import Any
 
 import torch
-from lightning import LightningModule
+
+try:
+    from lightning import LightningModule
+except ImportError:
+    from pytorch_lightning import LightningModule
 from torch_geometric.data import Data
 from torchmetrics import MeanMetric
 
