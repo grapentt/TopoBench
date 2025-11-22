@@ -56,7 +56,7 @@ from topobench.data.loaders.synthetic_large_transductive_loader import (
     SyntheticLargeTransductiveLoader,
 )
 from topobench.data.preprocessor.ondisk_transductive import (
-    OnDiskTransductiveDataset,
+    OnDiskTransductivePreprocessor,
 )
 from topobench.dataloader import TBDataloader
 from topobench.nn.encoders import AllCellFeatureEncoder
@@ -117,7 +117,7 @@ try:
         shutil.rmtree(ondisk_dir)
 
     print("Creating OnDiskTransductiveDataset...")
-    ondisk_dataset = OnDiskTransductiveDataset(
+    ondisk_dataset = OnDiskTransductivePreprocessor(
         graph_data=data,
         data_dir=str(ondisk_dir),
         max_structure_size=3,  # Triangles

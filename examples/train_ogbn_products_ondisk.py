@@ -1,12 +1,29 @@
-"""Training script for OGBN-products using on-disk transductive learning.
+"""Training script for OGBN-products using on-disk transductive learning with TopoBench.
 
 This script demonstrates large-scale transductive learning on OGBN-products
-(2.4M nodes, 61M edges) using on-disk structure indexing and mini-batch training.
+(2.4M nodes, 61M edges) using:
+- On-disk structure indexing and mini-batch training
+- TopoBench SCCNNCustom model for simplicial complex learning
+- PyTorch Lightning for training
+- Constant memory usage via on-disk preprocessing
 
 Key features:
-- Constant memory usage via on-disk indexing
+- Integrates TopoBench's on-disk preprocessor with Lightning
 - Mini-batch training with on-demand structure querying
 - Scales to graphs much larger than RAM
+- Uses proper TopoBench model architecture
+
+This script demonstrates proper TopoBench framework patterns:
+1. Uses TBModel (not custom Lightning modules)
+2. Uses TBLoss, TBOptimizer (TopoBench's standard components)
+3. Uses MiniBatchTransductiveDataset wrapper (follows TopoBench dataset pattern)
+4. Integrates with on-disk preprocessing for memory efficiency
+
+NOTE: Full simplicial complex support requires:
+- Proper lifting transforms applied during preprocessing
+- Collate function that creates simplicial complex batches (x_all, laplacian_all, incidence_all)
+
+For full TopoBench pipeline with Hydra configs, see: topobench/run.py
 
 Usage:
     python examples/train_ogbn_products_ondisk.py --max_epochs 10 --batch_size 1024
@@ -16,12 +33,19 @@ import argparse
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from lightning import Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from omegaconf import OmegaConf
+from torch.utils.data import DataLoader, IterableDataset
 
 from topobench.data.loaders import OGBNProductsLoader
-from topobench.data.preprocessor import OnDiskTransductiveDataset
+from topobench.data.preprocessor import OnDiskTransductivePreprocessor
 from topobench.dataloader import NodeBatchSampler, OnDiskTransductiveCollate
+from topobench.loss.loss import TBLoss
+from topobench.model.model import TBModel
+from topobench.nn.backbones.simplicial import SCCNNCustom
+from topobench.nn.readouts.simplicial_readout import SimplicialReadout
+from topobench.optimizer.optimizer import TBOptimizer
 
 
 def parse_args():
@@ -77,102 +101,92 @@ def parse_args():
     return parser.parse_args()
 
 
-class SimpleGNN(torch.nn.Module):
-    """Simple GNN for node classification.
-
-    This is a minimal model for demonstration purposes.
-    For production, use models from topobench.nn.
+def create_ogbn_model(in_channels, hidden_channels, out_channels, num_layers=2, lr=0.01, weight_decay=0.0):
+    """Create TopoBench model for OGBN-products.
+    
+    Uses proper TopoBench TBModel with separate components:
+    - SCCNNCustom backbone for simplicial complex learning
+    - SimplicialReadout for node classification
+    - TBLoss with cross entropy
+    - TBOptimizer with Adam
     """
-
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers=2):
-        super().__init__()
-        self.convs = torch.nn.ModuleList()
-
-        # First layer
-        self.convs.append(torch.nn.Linear(in_dim, hidden_dim))
-
-        # Hidden layers
-        for _ in range(num_layers - 2):
-            self.convs.append(torch.nn.Linear(hidden_dim, hidden_dim))
-
-        # Output layer
-        self.convs.append(torch.nn.Linear(hidden_dim, out_dim))
-
-    def forward(self, batch):
-        x = batch.x
-        edge_index = batch.edge_index
-
-        # Simple message passing
-        for i, conv in enumerate(self.convs[:-1]):
-            x = conv(x)
-            x = F.relu(x)
-            x = F.dropout(x, p=0.5, training=self.training)
-
-        x = self.convs[-1](x)
-        return F.log_softmax(x, dim=-1)
-
-
-def train_epoch(model, sampler, collate_fn, optimizer, device):
-    """Train for one epoch."""
-    model.train()
-    total_loss = 0
-    num_batches = 0
-
-    for node_batch in sampler:
-        # Get batch data with on-demand structure querying
-        batch = collate_fn([node_batch])
-        batch = batch.to(device)
-
-        # Forward pass
-        optimizer.zero_grad()
-        out = model(batch)
-
-        # Compute loss only on training nodes in this batch
-        mask = batch.train_mask
-        if mask.sum() == 0:
-            continue  # Skip if no training nodes in batch
-
-        loss = F.nll_loss(out[mask], batch.y[mask])
-
-        # Backward pass
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()
-        num_batches += 1
-
-    return total_loss / num_batches if num_batches > 0 else 0.0
+    # SCCNN backbone
+    in_channels_all = (in_channels, hidden_channels, hidden_channels)
+    hidden_channels_all = (hidden_channels, hidden_channels, hidden_channels)
+    
+    backbone = SCCNNCustom(
+        in_channels_all=in_channels_all,
+        hidden_channels_all=hidden_channels_all,
+        conv_order=1,
+        sc_order=2,  # Triangles
+        n_layers=num_layers,
+    )
+    
+    # Readout for node classification
+    readout = SimplicialReadout(
+        in_channels=hidden_channels,
+        out_channels=out_channels,
+        task_level="node",
+    )
+    
+    # Loss function
+    loss = TBLoss(
+        dataset_loss={
+            "task": "classification",
+            "loss_type": "cross_entropy",
+        }
+    )
+    
+    # Optimizer
+    optimizer = TBOptimizer(
+        optimizer_id="Adam",
+        parameters={"lr": lr, "weight_decay": weight_decay},
+    )
+    
+    # Create TBModel (TopoBench's standard Lightning module)
+    model = TBModel(
+        backbone=backbone,
+        readout=readout,
+        loss=loss,
+        optimizer=optimizer,
+    )
+    
+    return model
 
 
-@torch.no_grad()
-def evaluate(model, sampler, collate_fn, device, split="val"):
-    """Evaluate model on validation or test set."""
-    model.eval()
-    correct = 0
-    total = 0
-
-    for node_batch in sampler:
-        batch = collate_fn([node_batch])
-        batch = batch.to(device)
-
-        out = model(batch)
-        pred = out.argmax(dim=-1)
-
-        # Get mask for this split
-        if split == "val":
-            mask = batch.val_mask
-        elif split == "test":
-            mask = batch.test_mask
-        else:
-            raise ValueError(f"Invalid split: {split}")
-
-        if mask.sum() == 0:
-            continue
-
-        correct += (pred[mask] == batch.y[mask]).sum().item()
-        total += mask.sum().item()
-
-    return correct / total if total > 0 else 0.0
+class MiniBatchTransductiveDataset(IterableDataset):
+    """Dataset wrapper for mini-batch transductive learning.
+    
+    Wraps NodeBatchSampler and OnDiskTransductiveCollate to work with
+    standard PyTorch DataLoader and TopoBench's training pipeline.
+    This follows TopoBench's pattern of using dataset wrappers rather than
+    custom Lightning modules.
+    """
+    
+    def __init__(self, ondisk_dataset, graph_data, batch_size, shuffle=True, mask=None):
+        self.ondisk_dataset = ondisk_dataset
+        self.graph_data = graph_data
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.mask = mask
+        
+        self.sampler = NodeBatchSampler(
+            num_nodes=graph_data.num_nodes,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            mask=mask,
+        )
+        
+        self.collate_fn = OnDiskTransductiveCollate(
+            ondisk_dataset, fully_contained=True
+        )
+    
+    def __iter__(self):
+        for node_batch in self.sampler:
+            yield self.collate_fn([node_batch])
+    
+    def __len__(self):
+        return len(self.sampler)
 
 
 def main():
@@ -210,11 +224,22 @@ def main():
     print(f"  - Test nodes: {graph_data.test_mask.sum():,}")
     print()
 
-    # Step 2: Create on-disk transductive dataset
+    # Step 2: Create on-disk transductive dataset with transforms
     print("[2/5] Creating on-disk transductive dataset...")
-    ondisk_dataset = OnDiskTransductiveDataset(
+    
+    # Configure lifting transforms for simplicial complex
+    transforms_config = OmegaConf.create({
+        "clique_lifting": {
+            "transform_type": "lifting",
+            "transform_name": "SimplicialCliqueLifting",
+            "complex_dim": 2,
+        }
+    })
+    
+    ondisk_dataset = OnDiskTransductivePreprocessor(
         graph_data=graph_data,
         data_dir=args.index_dir,
+        transforms_config=transforms_config,
         max_structure_size=args.max_structure_size,
         force_rebuild=args.force_rebuild_index,
     )
@@ -227,86 +252,93 @@ def main():
     )
     print()
 
-    # Step 3: Create samplers and collate function
-    print("[3/5] Creating samplers and collate function...")
-    train_sampler = NodeBatchSampler(
-        num_nodes=graph_data.num_nodes,
+    # Step 3: Create datasets for train/val/test
+    print("[3/5] Creating mini-batch datasets...")
+    train_dataset = MiniBatchTransductiveDataset(
+        ondisk_dataset=ondisk_dataset,
+        graph_data=graph_data,
         batch_size=args.batch_size,
         shuffle=True,
         mask=graph_data.train_mask,
     )
-
-    val_sampler = NodeBatchSampler(
-        num_nodes=graph_data.num_nodes,
+    
+    val_dataset = MiniBatchTransductiveDataset(
+        ondisk_dataset=ondisk_dataset,
+        graph_data=graph_data,
         batch_size=args.batch_size,
         shuffle=False,
         mask=graph_data.val_mask,
     )
-
-    test_sampler = NodeBatchSampler(
-        num_nodes=graph_data.num_nodes,
+    
+    test_dataset = MiniBatchTransductiveDataset(
+        ondisk_dataset=ondisk_dataset,
+        graph_data=graph_data,
         batch_size=args.batch_size,
         shuffle=False,
         mask=graph_data.test_mask,
     )
-
-    collate_fn = OnDiskTransductiveCollate(
-        ondisk_dataset, fully_contained=True
-    )
-
-    print(
-        f"✓ Created samplers ({len(train_sampler)} train batches, "
-        f"{len(val_sampler)} val batches, {len(test_sampler)} test batches)"
-    )
+    
+    # Create dataloaders
+    train_loader = DataLoader(train_dataset, batch_size=None)
+    val_loader = DataLoader(val_dataset, batch_size=None)
+    test_loader = DataLoader(test_dataset, batch_size=None)
+    
+    print(f"✓ Datasets created (batch size: {args.batch_size})")
     print()
 
-    # Step 4: Create model
-    print("[4/5] Creating model...")
-    model = SimpleGNN(
-        in_dim=graph_data.x.shape[1],
-        hidden_dim=args.hidden_dim,
-        out_dim=graph_data.y.max().item() + 1,
+    # Step 4: Create model using TopoBench TBModel
+    print("[4/5] Creating SCCNNCustom model with TopoBench TBModel...")
+    model = create_ogbn_model(
+        in_channels=graph_data.x.shape[1],
+        hidden_channels=args.hidden_dim,
+        out_channels=graph_data.y.max().item() + 1,
         num_layers=args.num_layers,
-    ).to(args.device)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        lr=args.lr,
+    )
 
     num_params = sum(p.numel() for p in model.parameters())
     print(f"✓ Model created with {num_params:,} parameters")
+    print(f"  - Using TopoBench TBModel with:")
+    print(f"    * Backbone: SCCNNCustom (Simplicial Complex CNN)")
+    print(f"    * Readout: SimplicialReadout (node-level)")
+    print(f"    * Loss: TBLoss (cross_entropy)")
+    print(f"    * Optimizer: TBOptimizer (Adam)")
     print()
 
-    # Step 5: Training loop
-    print("[5/5] Training...")
-    print("-" * 80)
-
-    best_val_acc = 0.0
-    for epoch in range(1, args.max_epochs + 1):
-        # Train
-        train_loss = train_epoch(
-            model, train_sampler, collate_fn, optimizer, args.device
-        )
-
-        # Evaluate
-        val_acc = evaluate(
-            model, val_sampler, collate_fn, args.device, split="val"
-        )
-
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-
-        print(
-            f"Epoch {epoch:02d}: Loss: {train_loss:.4f}, Val Acc: {val_acc:.4f} "
-            f"(Best: {best_val_acc:.4f})"
-        )
-
-    print("-" * 80)
-
-    # Final test evaluation
-    print("\nEvaluating on test set...")
-    test_acc = evaluate(
-        model, test_sampler, collate_fn, args.device, split="test"
+    # Step 5: Training with Lightning using TopoBench pattern
+    print("[5/5] Training with PyTorch Lightning...")
+    
+    # Callbacks
+    checkpoint_callback = ModelCheckpoint(
+        monitor="val/loss",
+        mode="min",
+        save_top_k=1,
+        filename="ogbn-products-best",
     )
-    print(f"✓ Test Accuracy: {test_acc:.4f}")
+    
+    early_stop_callback = EarlyStopping(
+        monitor="val/loss",
+        patience=5,
+        mode="min",
+    )
+    
+    # Trainer
+    trainer = Trainer(
+        max_epochs=args.max_epochs,
+        accelerator="auto",
+        devices=1,
+        callbacks=[checkpoint_callback, early_stop_callback],
+        enable_progress_bar=True,
+        log_every_n_steps=10,
+    )
+    
+    # Train
+    trainer.fit(model, train_loader, val_loader)
+    
+    # Test
+    print("\nEvaluating on test set...")
+    test_results = trainer.test(model, test_loader)
+    print(f"✓ Test results: {test_results}")
 
     print("\n" + "=" * 80)
     print("Training completed successfully!")

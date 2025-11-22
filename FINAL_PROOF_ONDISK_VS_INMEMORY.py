@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from topobench.data.preprocessor import OnDiskTransductiveDataset
+from topobench.data.preprocessor import OnDiskTransductivePreprocessor
 from topobench.nn.backbones.simplicial.sccnn import SCCNNCustom
 
 
@@ -179,7 +179,7 @@ for config_name, config in GRAPH_CONFIGS.items():
     
     try:
         # Build OnDisk index
-        ondisk = OnDiskTransductiveDataset(
+        ondisk = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(index_dir),
             max_structure_size=3,

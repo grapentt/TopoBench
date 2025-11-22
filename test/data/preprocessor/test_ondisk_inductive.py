@@ -11,7 +11,7 @@ from torch_geometric.data import Data
 from torch_geometric.datasets import TUDataset
 
 from topobench.data.preprocessor.ondisk_inductive import (
-    OnDiskInductiveDataset,
+    OnDiskInductivePreprocessor,
 )
 
 
@@ -66,7 +66,7 @@ class TestOnDiskInductiveDataset:
         """Test dataset initialization without transforms."""
         data_dir = tmp_path / "test_no_transforms"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -83,7 +83,7 @@ class TestOnDiskInductiveDataset:
         data_dir = tmp_path / "test_force_reload"
 
         # Create dataset first time
-        dataset1 = OnDiskInductiveDataset(
+        dataset1 = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -97,7 +97,7 @@ class TestOnDiskInductiveDataset:
         torch.save({"corrupted": True}, sample_path)
 
         # Force reload should recreate
-        dataset2 = OnDiskInductiveDataset(
+        dataset2 = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -113,7 +113,7 @@ class TestOnDiskInductiveDataset:
         """Test __len__ method returns correct size."""
         data_dir = tmp_path / "test_len"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -126,7 +126,7 @@ class TestOnDiskInductiveDataset:
         """Test __getitem__ with valid index."""
         data_dir = tmp_path / "test_getitem"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -148,7 +148,7 @@ class TestOnDiskInductiveDataset:
         """Test __getitem__ for all indices."""
         data_dir = tmp_path / "test_getitem_all"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -166,7 +166,7 @@ class TestOnDiskInductiveDataset:
         """Test __getitem__ with negative index raises IndexError."""
         data_dir = tmp_path / "test_invalid_negative"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -181,7 +181,7 @@ class TestOnDiskInductiveDataset:
         """Test __getitem__ with out-of-range index."""
         data_dir = tmp_path / "test_invalid_large"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -196,7 +196,7 @@ class TestOnDiskInductiveDataset:
         """Test that all sample files are created during processing."""
         data_dir = tmp_path / "test_sequential"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -212,7 +212,7 @@ class TestOnDiskInductiveDataset:
         """Test metadata file is created with correct content."""
         data_dir = tmp_path / "test_metadata"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -237,7 +237,7 @@ class TestOnDiskInductiveDataset:
         data_dir = tmp_path / "test_caching"
 
         # First initialization - processes data
-        dataset1 = OnDiskInductiveDataset(
+        dataset1 = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -248,7 +248,7 @@ class TestOnDiskInductiveDataset:
         mtime1 = sample_path.stat().st_mtime
 
         # Second initialization - should use cache
-        dataset2 = OnDiskInductiveDataset(
+        dataset2 = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -267,7 +267,7 @@ class TestOnDiskInductiveDataset:
         """Test __repr__ returns informative string."""
         data_dir = tmp_path / "test_repr"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -282,7 +282,7 @@ class TestOnDiskInductiveDataset:
         """Test processed directory has correct structure."""
         data_dir = tmp_path / "test_structure"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -300,7 +300,7 @@ class TestOnDiskInductiveDataset:
         """Test sample files are named correctly with zero-padding."""
         data_dir = tmp_path / "test_naming"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -322,7 +322,7 @@ class TestOnDiskInductiveDataset:
         data_dir = tmp_path / "test_mutag"
 
         # Process small subset
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=mutag_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -351,7 +351,7 @@ class TestOnDiskInductiveDataset:
         source = DatasetWithSplits()
         data_dir = tmp_path / "test_splits"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=source,
             data_dir=data_dir,
             transforms_config=None,
@@ -373,7 +373,7 @@ class TestOnDiskInductiveDataset:
         source = EmptyDataset()
         data_dir = tmp_path / "test_empty"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=source,
             data_dir=data_dir,
             transforms_config=None,
@@ -389,7 +389,7 @@ class TestOnDiskInductiveDataset:
         """Test that missing sample file raises helpful error."""
         data_dir = tmp_path / "test_missing"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -413,7 +413,7 @@ class TestOnDiskInductiveDataset:
         data_dir = tmp_path / "test_corrupted"
 
         # Create dataset first time
-        dataset1 = OnDiskInductiveDataset(
+        dataset1 = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -424,7 +424,7 @@ class TestOnDiskInductiveDataset:
             f.write("{invalid json")
 
         # Should trigger reprocessing
-        dataset2 = OnDiskInductiveDataset(
+        dataset2 = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -442,7 +442,7 @@ class TestOnDiskInductiveDataset:
         """Test load_dataset_splits with inductive setting."""
         data_dir = tmp_path / "test_splits_inductive"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -478,7 +478,7 @@ class TestOnDiskInductiveDataset:
         """Test that transductive setting raises error."""
         data_dir = tmp_path / "test_splits_error"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,
@@ -497,7 +497,7 @@ class TestOnDiskInductiveDataset:
         """Test that missing learning_setting raises error."""
         data_dir = tmp_path / "test_splits_missing"
 
-        dataset = OnDiskInductiveDataset(
+        dataset = OnDiskInductivePreprocessor(
             dataset=synthetic_dataset,
             data_dir=data_dir,
             transforms_config=None,

@@ -1,9 +1,10 @@
-"""On-disk dataset for inductive learning with large datasets.
+"""On-disk preprocessor for inductive learning with large datasets.
 
-This module provides a memory-efficient dataset implementation that processes
+This module provides a memory-efficient preprocessing implementation that processes
 samples sequentially and stores them on disk, enabling training on datasets
-larger than available RAM. This is particularly useful when lifting operations
-(e.g., graph to simplicial complex) are memory-intensive.
+larger than available RAM. This preprocessor applies transforms (e.g., lifting
+operations from graphs to simplicial complexes) one sample at a time to maintain
+constant memory usage.
 """
 
 import json
@@ -21,13 +22,13 @@ from topobench.dataloader import DataloadDataset
 from topobench.transforms.data_transform import DataTransform
 
 
-class OnDiskInductiveDataset(Dataset):
-    """Sequential disk-backed dataset for large-scale inductive learning.
+class OnDiskInductivePreprocessor(Dataset):
+    """Sequential disk-backed preprocessor for large-scale inductive learning.
 
-    This dataset processes samples one-by-one, immediately saving each to disk
-    to maintain constant memory usage regardless of dataset size. This enables
-    training on datasets that would otherwise cause out-of-memory errors during
-    preprocessing/lifting operations.
+    This preprocessor processes samples one-by-one, applying transforms and
+    immediately saving each to disk to maintain constant memory usage regardless
+    of dataset size. This enables training on datasets that would otherwise cause
+    out-of-memory errors during preprocessing/lifting operations.
 
     The dataset supports transform caching via parameter hashing, ensuring that
     identical transform configurations reuse previously processed data.

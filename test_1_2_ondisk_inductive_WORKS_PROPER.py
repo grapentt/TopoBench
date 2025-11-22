@@ -57,7 +57,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from topobench.data.loaders.synthetic_large_inductive_loader import (
     SyntheticLargeInductiveLoader,
 )
-from topobench.data.preprocessor.ondisk_inductive import OnDiskInductiveDataset
+from topobench.data.preprocessor.ondisk_inductive import OnDiskInductivePreprocessor
 from topobench.dataloader import TBDataloader
 from topobench.nn.encoders import AllCellFeatureEncoder
 from topobench.nn.backbones.simplicial.sccnn import SCCNNCustom
@@ -112,7 +112,7 @@ try:
         shutil.rmtree(ondisk_dir)
 
     print("Creating OnDiskInductiveDataset...")
-    ondisk_dataset = OnDiskInductiveDataset(
+    ondisk_dataset = OnDiskInductivePreprocessor(
         dataset=dataset,
         data_dir=str(ondisk_dir),
         max_k=MAX_K,

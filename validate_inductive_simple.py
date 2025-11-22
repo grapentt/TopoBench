@@ -164,7 +164,7 @@ def test_ondisk_lifting(dataset, max_k=2):
 
     try:
         from topobench.data.preprocessor.ondisk_inductive import (
-            OnDiskInductiveDataset,
+            OnDiskInductivePreprocessor,
         )
 
         data_dir = Path("/tmp/validate_ondisk_inductive")
@@ -176,7 +176,7 @@ def test_ondisk_lifting(dataset, max_k=2):
         start_time = time.time()
 
         # Create on-disk dataset (processes with constant memory)
-        ondisk_dataset = OnDiskInductiveDataset(
+        ondisk_dataset = OnDiskInductivePreprocessor(
             dataset=dataset,
             data_dir=str(data_dir),
             max_k=max_k,

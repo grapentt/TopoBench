@@ -260,7 +260,7 @@ def test_ondisk_inductive(n_graphs=5000, nodes_per_graph=50, avg_degree=10):
 
     try:
         from topobench.data.preprocessor.ondisk_inductive import (
-            OnDiskInductiveDataset,
+            OnDiskInductivePreprocessor,
         )
 
         # Generate dataset
@@ -279,7 +279,7 @@ def test_ondisk_inductive(n_graphs=5000, nodes_per_graph=50, avg_degree=10):
         start_time = time.time()
 
         # Use on-disk dataset
-        ondisk_dataset = OnDiskInductiveDataset(
+        ondisk_dataset = OnDiskInductivePreprocessor(
             dataset=dataset,
             data_dir=str(data_dir / "ondisk"),
             max_k=2,  # Triangles

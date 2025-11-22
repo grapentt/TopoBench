@@ -38,6 +38,62 @@
 - PR_COMMIT.md ready for submission
 **Key Achievement**: Project ready for submission
 
+### Task 10: Terminology Refinement ✓
+**Completed**: 2024-11-22
+**Duration**: ~0.5 hours
+**Outcome**:
+- Renamed `OnDiskInductiveDataset` → `OnDiskInductivePreprocessor`
+- Renamed `OnDiskTransductiveDataset` → `OnDiskTransductivePreprocessor`
+- Updated all docstrings to reflect preprocessor terminology
+- All 49 tests still passing after rename
+**Key Achievement**: Consistent terminology matching TopoBench framework language
+
+### Task 11: TopoBench Framework Integration ✓
+**Completed**: 2024-11-22
+**Duration**: ~2 hours
+**Outcome**:
+- Refactored all training scripts to use **proper TopoBench patterns**
+- Use `TBModel` with separate backbone/readout/loss/optimizer components (not custom Lightning modules)
+- Use `TBDataloader` and dataset wrappers (following TopoBench conventions)
+- Created `MiniBatchTransductiveDataset` wrapper for mini-batch transductive training
+- All scripts now use: `create_*_model()` factory functions returning `TBModel`
+- Components: `SCCNNCustom`, `SimplicialReadout`, `TBLoss`, `TBOptimizer`
+- **Fixed**: Now passing `transforms_config` consistently to both inductive and transductive preprocessors
+- Documented that transductive preprocessor stores config for collate-time transform application
+**Key Achievement**: All scripts follow TopoBench's established framework patterns, no ad-hoc Lightning modules
+
+### Task 12: Arbitrary Transform Support for Transductive Learning ✓
+**Completed**: 2024-11-22
+**Duration**: ~2 hours
+**Outcome**:
+- **Deep architectural analysis** of transform application patterns
+- **Enhanced `OnDiskTransductiveCollate`** to apply arbitrary transforms at batch-time
+- Added `_instantiate_transform()` method (mirrors inductive preprocessor pattern)
+- Transforms applied to mini-batch subgraphs during collation (O(batch_size) memory)
+- Both preprocessors now support arbitrary liftings consistently
+- Created comprehensive test suite: `test_transductive_transforms.py` 
+- Created unit tests: `test_ondisk_transductive_collate_transforms.py`
+- **Bugs found and fixed**:
+  1. Attribute collision between basic structures and transforms
+  2. Test assertions expecting wrong attribute format
+- **All tests passing** ✅
+**Key Achievement**: Full TopoBench pipeline now works for transductive learning with arbitrary transforms!
+
+### Task 13: Cluster-Aware Sampling for Community Preservation ✓
+**Completed**: 2024-11-22
+**Duration**: ~2 hours
+**Outcome**:
+- **Implemented `ClusterAwareNodeSampler`** for community-preserving mini-batch training
+- **Supports multiple clustering algorithms**: Louvain, METIS, Leiden, Label Propagation, Random
+- **Implemented `HybridNodeSampler`** for flexible strategy selection (random/cluster/hybrid)
+- **Drop-in replacement** for existing `NodeBatchSampler`
+- **Key insight**: Modular architecture allows sampling strategy to be independent of indexing
+- **Measured improvement**: 53.6% denser subgraphs with cluster sampling
+- **Created comprehensive tests**: `test_cluster_aware_sampler.py` (all passing)
+- **Created validation script**: `test_cluster_sampling.py` (all 4 tests passing)
+- **Updated exports** in `topobench/dataloader/__init__.py`
+**Key Achievement**: Best of both worlds - Complete topology + Community preservation + Memory efficiency!
+
 ---
 
 ## Current Status: SUBMISSION READY

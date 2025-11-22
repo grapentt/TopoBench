@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.data import Data
 
 from topobench.data.preprocessor.ondisk_transductive import (
-    OnDiskTransductiveDataset,
+    OnDiskTransductivePreprocessor,
 )
 from topobench.dataloader.ondisk_transductive_collate import (
     NodeBatchSampler,
@@ -62,7 +62,7 @@ class TestOnDiskTransductiveCollate:
     def test_collate_basic(self, small_graph, tmp_path):
         """Test basic collate functionality."""
         # Create on-disk dataset
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_collate"),
             max_structure_size=3,
@@ -83,7 +83,7 @@ class TestOnDiskTransductiveCollate:
 
     def test_collate_extracts_node_ids_list(self, small_graph, tmp_path):
         """Test node ID extraction from list format."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_extract"),
             max_structure_size=3,
@@ -98,7 +98,7 @@ class TestOnDiskTransductiveCollate:
 
     def test_collate_extracts_node_ids_tensor(self, small_graph, tmp_path):
         """Test node ID extraction from tensor format."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_tensor"),
             max_structure_size=3,
@@ -113,7 +113,7 @@ class TestOnDiskTransductiveCollate:
 
     def test_collate_extracts_edges(self, small_graph, tmp_path):
         """Test edge extraction for batch."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_edges"),
             max_structure_size=3,
@@ -132,7 +132,7 @@ class TestOnDiskTransductiveCollate:
 
     def test_collate_preserves_masks(self, small_graph, tmp_path):
         """Test that train/val/test masks are preserved."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_masks"),
             max_structure_size=3,
@@ -206,7 +206,7 @@ class TestMiniBatchTraining:
     def test_dataloader_integration(self, small_graph, tmp_path):
         """Test DataLoader integration with custom collate."""
         # Create on-disk dataset
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_dataloader"),
             max_structure_size=3,
@@ -240,7 +240,7 @@ class TestMiniBatchTraining:
 
     def test_memory_efficiency(self, small_graph, tmp_path):
         """Test that batches don't accumulate in memory."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_memory"),
             max_structure_size=3,
@@ -265,7 +265,7 @@ class TestMiniBatchTraining:
 
     def test_structure_querying(self, small_graph, tmp_path):
         """Test that structures are queried correctly for batches."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_structures"),
             max_structure_size=3,
@@ -294,7 +294,7 @@ class TestConsistencyValidation:
 
     def test_batch_features_match_graph(self, small_graph, tmp_path):
         """Test that batch features match original graph features."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_consistency"),
             max_structure_size=3,
@@ -313,7 +313,7 @@ class TestConsistencyValidation:
 
     def test_batch_labels_match_graph(self, small_graph, tmp_path):
         """Test that batch labels match original graph labels."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_labels"),
             max_structure_size=3,
@@ -335,7 +335,7 @@ class TestEdgeCases:
 
     def test_empty_batch(self, small_graph, tmp_path):
         """Test handling of empty batch."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_empty"),
             max_structure_size=3,
@@ -350,7 +350,7 @@ class TestEdgeCases:
 
     def test_single_node_batch(self, small_graph, tmp_path):
         """Test batch with single node."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_single"),
             max_structure_size=3,
@@ -365,7 +365,7 @@ class TestEdgeCases:
 
     def test_duplicate_nodes_in_batch(self, small_graph, tmp_path):
         """Test batch with duplicate node IDs."""
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_duplicates"),
             max_structure_size=3,

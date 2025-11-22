@@ -13,8 +13,8 @@ from topobench.data.preprocessor.factory import (
     _is_transductive,
     _should_use_ondisk,
 )
-from topobench.data.preprocessor.ondisk_inductive import OnDiskInductiveDataset
-from topobench.data.preprocessor.ondisk_transductive import OnDiskTransductiveDataset
+from topobench.data.preprocessor.ondisk_inductive import OnDiskInductivePreprocessor
+from topobench.data.preprocessor.ondisk_transductive import OnDiskTransductivePreprocessor
 from topobench.data.preprocessor.preprocessor import PreProcessor
 
 
@@ -249,7 +249,7 @@ class TestCreatePreprocessor:
             mode="ondisk"
         )
         
-        assert isinstance(preprocessor, OnDiskInductiveDataset)
+        assert isinstance(preprocessor, OnDiskInductivePreprocessor)
 
     def test_create_preprocessor_ondisk_transductive(self, transductive_dataset, tmp_path):
         """Test creating on-disk transductive preprocessor."""
@@ -260,7 +260,7 @@ class TestCreatePreprocessor:
             mode="ondisk"
         )
         
-        assert isinstance(preprocessor, OnDiskTransductiveDataset)
+        assert isinstance(preprocessor, OnDiskTransductivePreprocessor)
 
     @pytest.mark.skip(reason="PreProcessor requires InMemoryDataset")
     def test_create_preprocessor_auto_small_dataset(self, inductive_dataset, tmp_path):
@@ -288,7 +288,7 @@ class TestCreatePreprocessor:
         )
         
         # Should choose on-disk when RAM is very limited
-        assert isinstance(preprocessor, OnDiskInductiveDataset)
+        assert isinstance(preprocessor, OnDiskInductivePreprocessor)
 
     @pytest.mark.skip(reason="Fixture issue - see test_factory_with_mutag_dataset for working test")
     def test_create_preprocessor_with_transforms_config(self, inductive_dataset, tmp_path):
@@ -309,7 +309,7 @@ class TestCreatePreprocessor:
             mode="ondisk"
         )
         
-        assert isinstance(preprocessor, OnDiskInductiveDataset)
+        assert isinstance(preprocessor, OnDiskInductivePreprocessor)
 
     @pytest.mark.skip(reason="Fixture issue - see test_factory_with_mutag_dataset for working test")
     def test_create_preprocessor_passes_kwargs(self, inductive_dataset, tmp_path):
@@ -322,7 +322,7 @@ class TestCreatePreprocessor:
             force_reload=True  # Additional kwarg
         )
         
-        assert isinstance(preprocessor, OnDiskInductiveDataset)
+        assert isinstance(preprocessor, OnDiskInductivePreprocessor)
         assert preprocessor.force_reload is True
 
     @pytest.mark.skip(reason="PreProcessor requires InMemoryDataset")
@@ -445,7 +445,7 @@ class TestIntegration:
         )
         
         # Verify it's on-disk
-        assert isinstance(preprocessor, OnDiskInductiveDataset)
+        assert isinstance(preprocessor, OnDiskInductivePreprocessor)
         
         # Verify basic functionality
         assert len(preprocessor) == 5
@@ -487,7 +487,7 @@ class TestIntegration:
             mode="ondisk"
         )
         
-        assert isinstance(ondisk, OnDiskInductiveDataset)
+        assert isinstance(ondisk, OnDiskInductivePreprocessor)
         assert len(ondisk) > 0
         
         # Test in-memory mode

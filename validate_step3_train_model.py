@@ -19,7 +19,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
 
 from topobench.data.preprocessor.ondisk_transductive import (
-    OnDiskTransductiveDataset,
+    OnDiskTransductivePreprocessor,
 )
 
 
@@ -119,7 +119,7 @@ def train_with_ondisk(nodes=12000, avg_degree=25, n_epochs=5, seed=42):
 
     if not data_dir.exists():
         print("  Building new index...")
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(data_dir),
             max_structure_size=3,
@@ -128,7 +128,7 @@ def train_with_ondisk(nodes=12000, avg_degree=25, n_epochs=5, seed=42):
         dataset.build_index()
     else:
         print("  Using existing index...")
-        dataset = OnDiskTransductiveDataset(
+        dataset = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(data_dir),
             max_structure_size=3,

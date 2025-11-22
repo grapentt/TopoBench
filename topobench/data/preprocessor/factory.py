@@ -11,11 +11,11 @@ if TYPE_CHECKING:
     import torch_geometric
     from omegaconf import DictConfig
 
-    from .ondisk_inductive import OnDiskInductiveDataset
-    from .ondisk_transductive import OnDiskTransductiveDataset
+    from .ondisk_inductive import OnDiskInductivePreprocessor
+    from .ondisk_transductive import OnDiskTransductivePreprocessor
     from .preprocessor import PreProcessor
 
-    PreprocessorType = Union[PreProcessor, OnDiskInductiveDataset, OnDiskTransductiveDataset]
+    PreprocessorType = Union[PreProcessor, OnDiskInductivePreprocessor, OnDiskTransductivePreprocessor]
 
 
 def _is_transductive(dataset: torch_geometric.data.Dataset | torch.utils.data.Dataset) -> bool:
@@ -182,7 +182,7 @@ def create_preprocessor(
     
     Returns
     -------
-    PreProcessor or OnDiskInductiveDataset or OnDiskTransductiveDataset
+    PreProcessor or OnDiskInductivePreprocessor or OnDiskTransductivePreprocessor
         Appropriate preprocessor instance based on dataset and mode.
     
     Examples
@@ -211,19 +211,19 @@ def create_preprocessor(
     
     Notes
     -----
-    - For inductive datasets (many graphs), uses OnDiskInductiveDataset
-    - For transductive datasets (single graph), uses OnDiskTransductiveDataset
+    - For inductive datasets (many graphs), uses OnDiskInductivePreprocessor
+    - For transductive datasets (single graph), uses OnDiskTransductivePreprocessor
     - In-memory mode uses standard PreProcessor (current TopoBench default)
     - Auto mode estimates memory requirements and chooses appropriately
     
     See Also
     --------
     PreProcessor : Standard in-memory preprocessor
-    OnDiskInductiveDataset : On-disk preprocessor for inductive learning
-    OnDiskTransductiveDataset : On-disk preprocessor for transductive learning
+    OnDiskInductivePreprocessor : On-disk preprocessor for inductive learning
+    OnDiskTransductivePreprocessor : On-disk preprocessor for transductive learning
     """
-    from .ondisk_inductive import OnDiskInductiveDataset
-    from .ondisk_transductive import OnDiskTransductiveDataset
+    from .ondisk_inductive import OnDiskInductivePreprocessor
+    from .ondisk_transductive import OnDiskTransductivePreprocessor
     from .preprocessor import PreProcessor
     
     # Determine if on-disk should be used
@@ -248,7 +248,7 @@ def create_preprocessor(
         if transforms_config is not None:
             max_structure_size = transforms_config.get("complex_dim", 3)
         
-        return OnDiskTransductiveDataset(
+        return OnDiskTransductivePreprocessor(
             graph_data=graph_data,
             data_dir=data_dir,
             transforms_config=transforms_config,
@@ -257,7 +257,7 @@ def create_preprocessor(
         )
     else:
         # Multiple graphs - use inductive on-disk
-        return OnDiskInductiveDataset(
+        return OnDiskInductivePreprocessor(
             dataset=dataset,
             data_dir=data_dir,
             transforms_config=transforms_config,

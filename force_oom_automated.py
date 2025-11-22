@@ -77,7 +77,7 @@ def test_ondisk(nodes, degree):
 
     try:
         from topobench.data.preprocessor.ondisk_transductive import (
-            OnDiskTransductiveDataset,
+            OnDiskTransductivePreprocessor,
         )
 
         G = nx.watts_strogatz_graph(n=nodes, k=degree, p=0.5, seed=42)
@@ -95,7 +95,7 @@ def test_ondisk(nodes, degree):
 
             shutil.rmtree(data_dir)
 
-        dataset = OnDiskTransductiveDataset(data, str(data_dir), 3, True)
+        dataset = OnDiskTransductivePreprocessor(data, str(data_dir), 3, True)
         dataset.build_index()
 
         print(f"✅ SUCCESS: {dataset.num_structures:,} triangles indexed")

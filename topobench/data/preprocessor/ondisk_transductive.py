@@ -15,13 +15,13 @@ from torch_geometric.data import Data
 from topobench.data.structure_query import StructureQueryEngine
 
 
-class OnDiskTransductiveDataset(torch.utils.data.Dataset):
-    """On-disk dataset for transductive learning on large graphs.
+class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
+    """On-disk preprocessor for transductive learning on large graphs.
 
-    This dataset enables training on graphs that are too large to fit in memory
-    by indexing topological structures offline and querying them on-demand
-    during training. It maintains constant O(1) memory usage regardless of
-    graph size.
+    This preprocessor provides efficient structure detection, indexing, and on-demand
+    querying for large-scale transductive graph learning without loading all
+    structures into memory. It builds an index of topological structures (e.g.,
+    triangles, cliques) that can be queried during mini-batch training.
 
     Parameters
     ----------
@@ -121,6 +121,12 @@ class OnDiskTransductiveDataset(torch.utils.data.Dataset):
         self.transforms_config = transforms_config
         self.max_structure_size = max_structure_size
         self.force_rebuild = force_rebuild
+
+        # Note: transforms_config is stored for compatibility with TopoBench framework
+        # and will be used by OnDiskTransductiveCollate during batch construction.
+        # The transductive preprocessor indexes raw structures, and transforms are
+        # applied during collation (unlike inductive, where transforms are applied
+        # during preprocessing).
 
         # Convert PyG Data to NetworkX for structure detection
         self.nx_graph = self._pyg_to_networkx(graph_data)

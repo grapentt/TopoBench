@@ -1,8 +1,13 @@
-"""Production validation: Inductive on-disk vs in-memory.
+"""Production validation: Inductive on-disk vs in-memory with TopoBench.
 
 This script demonstrates that:
 1. In-memory preprocessing FAILS (OOM) on large inductive datasets
-2. On-disk preprocessing SUCCEEDS with constant memory
+2. On-disk preprocessing SUCCEEDS with constant memory using TopoBench framework
+
+Features:
+- Uses TopoBench's on-disk preprocessor
+- Demonstrates memory-efficient training on large datasets
+- Shows integration with TopoBench workflow
 
 Usage:
     python validation/validate_inductive_ondisk.py --max_ram_gb 4.0
@@ -19,10 +24,17 @@ from omegaconf import OmegaConf
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import networkx as nx
+from lightning import Trainer
 from torch_geometric.data import Data
 from torch_geometric.utils import from_networkx
 
-from topobench.data.preprocessor import OnDiskInductiveDataset, PreProcessor, create_preprocessor
+from topobench.data.preprocessor import OnDiskInductivePreprocessor, PreProcessor, create_preprocessor
+from topobench.dataloader import TBDataloader
+from topobench.loss.loss import TBLoss
+from topobench.model.model import TBModel
+from topobench.nn.backbones.simplicial import SCCNNCustom
+from topobench.nn.readouts.simplicial_readout import SimplicialReadout
+from topobench.optimizer.optimizer import TBOptimizer
 from topobench.utils.validation_utils import (
     MemoryTracker,
     calculate_oom_params,
@@ -50,7 +62,108 @@ def parse_args():
         default="./data/validation_inductive",
         help="Data directory",
     )
+    parser.add_argument(
+        "--train_epochs",
+        type=int,
+        default=3,
+        help="Number of training epochs for validation",
+    )
     return parser.parse_args()
+
+
+def create_validation_model(in_channels, hidden_channels, out_channels, lr=0.01):
+    """Create TopoBench model for validation.
+    
+    Uses proper TopoBench TBModel with separate components:
+    - SCCNNCustom backbone
+    - SimplicialReadout
+    - TBLoss
+    - TBOptimizer
+    """
+    # SCCNN backbone for simplicial complex learning
+    in_channels_all = (in_channels, hidden_channels, hidden_channels)
+    hidden_channels_all = (hidden_channels, hidden_channels, hidden_channels)
+    
+    backbone = SCCNNCustom(
+        in_channels_all=in_channels_all,
+        hidden_channels_all=hidden_channels_all,
+        conv_order=1,
+        sc_order=2,
+        n_layers=2,
+    )
+    
+    # Readout for graph classification
+    readout = SimplicialReadout(
+        in_channels=hidden_channels,
+        out_channels=out_channels,
+        task_level="graph",
+    )
+    
+    # Loss function
+    loss = TBLoss(
+        dataset_loss={
+            "task": "classification",
+            "loss_type": "cross_entropy",
+        }
+    )
+    
+    # Optimizer
+    optimizer = TBOptimizer(
+        optimizer_id="Adam",
+        parameters={"lr": lr},
+    )
+    
+    # Create TBModel (TopoBench's standard Lightning module)
+    model = TBModel(
+        backbone=backbone,
+        readout=readout,
+        loss=loss,
+        optimizer=optimizer,
+    )
+    
+    return model
+
+
+def train_on_disk_model(ondisk_dataset, num_epochs=3):
+    """Train a model using TopoBench pipeline on the on-disk dataset."""
+    print("\nTraining TopoBench model on on-disk dataset...")
+    
+    try:
+        # Get dimensions from first sample
+        sample = ondisk_dataset[0]
+        in_channels = sample.x.shape[1] if hasattr(sample, 'x') else 16
+        out_channels = 2  # Binary classification
+        
+        # Create TopoBench dataloader
+        datamodule = TBDataloader(
+            dataset_train=ondisk_dataset,
+            batch_size=32,
+            num_workers=0,
+        )
+        
+        # Create model using TopoBench TBModel pattern
+        model = create_validation_model(
+            in_channels=in_channels,
+            hidden_channels=64,
+            out_channels=out_channels,
+        )
+        
+        # Train with Lightning using TopoBench trainer pattern
+        trainer = Trainer(
+            max_epochs=num_epochs,
+            enable_progress_bar=False,
+            logger=False,
+            enable_checkpointing=False,
+        )
+        
+        trainer.fit(model, datamodule)
+        print(f"✓ Training completed: {num_epochs} epochs on {len(ondisk_dataset)} samples")
+        return True
+    except Exception as e:
+        print(f"✗ Training failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def test_inmemory_fails(params: dict, data_dir: str) -> bool:
@@ -172,7 +285,7 @@ def test_ondisk_succeeds(params: dict, data_dir: str) -> bool:
             })
 
             print(f"\nProcessing with on-disk approach...")
-            ondisk = OnDiskInductiveDataset(
+            ondisk = OnDiskInductivePreprocessor(
                 dataset=graphs,
                 data_dir=data_dir + "/ondisk_processed",
                 transforms_config=transforms_config,
@@ -201,8 +314,11 @@ def test_ondisk_succeeds(params: dict, data_dir: str) -> bool:
             f"Memory stayed constant: {memory_increase_gb:.2f}GB increase "
             f"(vs {params['estimated_memory_gb']:.2f}GB for in-memory)"
         )
+        
+        # Train a model using TopoBench framework
+        training_ok = train_on_disk_model(ondisk, num_epochs=3)
 
-        return True
+        return memory_ok and training_ok
 
     except Exception as e:
         print_result(False, f"On-disk approach failed unexpectedly: {e}")

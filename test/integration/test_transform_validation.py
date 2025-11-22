@@ -11,7 +11,7 @@ from torch_geometric.data import Data
 from torch_geometric.datasets import TUDataset
 
 from topobench.data.preprocessor import create_preprocessor
-from topobench.data.preprocessor.ondisk_inductive import OnDiskInductiveDataset
+from topobench.data.preprocessor.ondisk_inductive import OnDiskInductivePreprocessor
 from topobench.data.preprocessor.preprocessor import PreProcessor
 
 
@@ -63,7 +63,7 @@ class TestSimplicialCliqueLifting:
             mode="ondisk"
         )
         
-        assert isinstance(ondisk, OnDiskInductiveDataset)
+        assert isinstance(ondisk, OnDiskInductivePreprocessor)
         assert len(ondisk) == len(mutag_dataset)
         
         # Verify samples can be loaded
@@ -159,7 +159,7 @@ class TestHypergraphLifting:
             mode="ondisk"
         )
         
-        assert isinstance(ondisk, OnDiskInductiveDataset)
+        assert isinstance(ondisk, OnDiskInductivePreprocessor)
         assert len(ondisk) == len(mutag_dataset)
         
         # Verify samples load

@@ -9,11 +9,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import torch
+import torch_geometric
+from omegaconf import DictConfig
 from torch_geometric.data import Batch, Data
+
+from topobench.transforms.data_transform import DataTransform
 
 if TYPE_CHECKING:
     from topobench.data.preprocessor.ondisk_transductive import (
-        OnDiskTransductiveDataset,
+        OnDiskTransductivePreprocessor,
     )
 
 
@@ -21,13 +25,19 @@ class OnDiskTransductiveCollate:
     """Collate function for on-disk transductive mini-batch training.
 
     This collate function queries topological structures on-demand from
-    an OnDiskTransductiveDataset, enabling memory-efficient mini-batch
-    training on large graphs.
+    an OnDiskTransductiveDataset and applies transforms to create proper
+    simplicial complex structures, enabling memory-efficient mini-batch
+    training on large graphs with arbitrary topological liftings.
 
     Parameters
     ----------
     ondisk_dataset : OnDiskTransductiveDataset
         The on-disk transductive dataset containing the graph and index.
+        If ondisk_dataset.transforms_config is provided, transforms will be
+        applied to each batch to create simplicial complex structures as
+        individual attributes (x_0, x_1, x_2, hodge_laplacian_0, incidence_1, etc.).
+        Use a backbone wrapper (e.g., SCCNNWrapper) to convert these to tuple format
+        (x_all, laplacian_all, incidence_all) if needed by your model.
     fully_contained : bool, optional
         If True, only return structures where ALL nodes are in the batch.
         If False, return structures with ANY node in the batch.
@@ -76,7 +86,7 @@ class OnDiskTransductiveCollate:
 
     def __init__(
         self,
-        ondisk_dataset: OnDiskTransductiveDataset,
+        ondisk_dataset: OnDiskTransductivePreprocessor,
         fully_contained: bool = True,
     ) -> None:
         """Initialize collate function.
@@ -92,6 +102,13 @@ class OnDiskTransductiveCollate:
         self.ondisk_dataset = ondisk_dataset
         self.fully_contained = fully_contained
         self.graph_data = ondisk_dataset.graph_data
+        
+        # Initialize transform if transforms_config is provided
+        self.transform = None
+        if ondisk_dataset.transforms_config is not None:
+            self.transform = self._instantiate_transform(
+                ondisk_dataset.transforms_config
+            )
 
     def __call__(self, batch_items: list[Any]) -> Data:
         """Collate a batch of node indices into a Data object.
@@ -257,11 +274,19 @@ class OnDiskTransductiveCollate:
             original_node_ids=torch.tensor(node_ids, dtype=torch.long),
         )
 
-        # Add topological structures if any were found
-        if structures:
-            batch_data = self._add_structures_to_batch(
-                batch_data, structures, node_to_idx
-            )
+        # If transforms are configured, skip basic structure addition
+        # The transform will create proper simplicial complex structures
+        if self.transform is None:
+            # Add topological structures as basic incidence matrices
+            if structures:
+                batch_data = self._add_structures_to_batch(
+                    batch_data, structures, node_to_idx
+                )
+        else:
+            # Apply transforms to create proper simplicial complex structures
+            # The transform operates on the graph structure (nodes + edges)
+            # and creates x_all, laplacian_all, incidence_all
+            batch_data = self.transform(batch_data)
 
         return batch_data
 
@@ -359,6 +384,59 @@ class OnDiskTransductiveCollate:
                 setattr(batch_data, f"x_{size-1}", incidence)
 
         return batch_data
+    
+    def _instantiate_transform(
+        self, transforms_config: DictConfig
+    ) -> torch_geometric.transforms.Compose:
+        """Instantiate transform from configuration.
+        
+        Transforms are applied at batch-time to create proper simplicial
+        complex structures from the queried topological structures. The transform
+        creates individual attributes (x_0, x_1, x_2, hodge_laplacian_0, 
+        down_laplacian_1, incidence_1, etc.) on the batch Data object.
+        
+        Parameters
+        ----------
+        transforms_config : DictConfig
+            Transform configuration parameters.
+        
+        Returns
+        -------
+        torch_geometric.transforms.Compose
+            Composed transform object.
+            
+        Notes
+        -----
+        Unlike inductive learning where transforms are applied offline during
+        preprocessing, transductive learning applies transforms online during
+        batch collation. This is necessary because:
+        1. The full graph is too large to lift entirely into memory
+        2. Transforms are applied to mini-batch subgraphs (O(batch_size) memory)
+        3. Each batch gets properly lifted structures for model consumption
+        """
+        # Handle nested liftings config (for compatibility)
+        if transforms_config.keys() == {"liftings"}:
+            transforms_config = transforms_config.liftings
+        
+        # Check if single or multiple transforms
+        if "transform_name" in transforms_config:
+            # Single transform
+            pre_transforms_dict = {
+                transforms_config.transform_name: DataTransform(
+                    **transforms_config
+                )
+            }
+        else:
+            # Multiple transforms
+            pre_transforms_dict = {
+                key: DataTransform(**value)
+                for key, value in transforms_config.items()
+            }
+        
+        # Return composed transform
+        return torch_geometric.transforms.Compose(
+            list(pre_transforms_dict.values())
+        )
 
 
 class NodeBatchSampler:

@@ -27,7 +27,7 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 sys.path.insert(0, str(Path(__file__).parent))
 
 from topobench.data.loaders import TUDatasetLoader
-from topobench.data.preprocessor import PreProcessor, OnDiskInductiveDataset
+from topobench.data.preprocessor import PreProcessor, OnDiskInductivePreprocessor
 from topobench.nn.encoders import AllCellFeatureEncoder
 from topobench.nn.readouts import PropagateSignalDown
 from topobench.nn.wrappers import SCCNNWrapper
@@ -201,7 +201,7 @@ start_build = time.time()
 # Load fresh dataset for topological processing
 dataset_topo = TUDataset(root='./data/graph/TUDataset', name='PROTEINS')
 
-ondisk_dataset = OnDiskInductiveDataset(
+ondisk_dataset = OnDiskInductivePreprocessor(
     dataset=dataset_topo,
     data_dir=data_dir,
     transforms_config=transform_config,

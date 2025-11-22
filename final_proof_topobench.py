@@ -78,7 +78,7 @@ try:
         sys.path.insert(0, str(topobench_path.parent))
 
     from topobench.data.preprocessor.ondisk_transductive import (
-        OnDiskTransductiveDataset,
+        OnDiskTransductivePreprocessor,
     )
 
     print("✓ TopoBench OnDiskTransductiveDataset imported")
@@ -109,7 +109,7 @@ except ImportError as e:
     sys.modules["topobench.data.utils"].make_hash = lambda x: str(hash(str(x)))
 
     spec.loader.exec_module(module)
-    OnDiskTransductiveDataset = module.OnDiskTransductiveDataset
+    OnDiskTransductivePreprocessor = module.OnDiskTransductiveDataset
     print("✓ TopoBench OnDiskTransductiveDataset loaded")
 
 print()
@@ -127,7 +127,7 @@ if data_dir.exists():
 
 start_time = time.time()
 
-dataset = OnDiskTransductiveDataset(
+dataset = OnDiskTransductivePreprocessor(
     graph_data=data,
     data_dir=str(data_dir),
     max_structure_size=3,  # Triangles

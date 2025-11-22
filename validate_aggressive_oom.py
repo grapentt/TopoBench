@@ -128,7 +128,7 @@ def test_ondisk_dense(nodes, avg_degree):
 
     try:
         from topobench.data.preprocessor.ondisk_transductive import (
-            OnDiskTransductiveDataset,
+            OnDiskTransductivePreprocessor,
         )
 
         print("Generating same DENSE graph...")
@@ -155,7 +155,7 @@ def test_ondisk_dense(nodes, avg_degree):
 
         start_time = time.time()
 
-        ondisk_dataset = OnDiskTransductiveDataset(
+        ondisk_dataset = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(data_dir),
             max_structure_size=3,

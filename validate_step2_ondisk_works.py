@@ -17,7 +17,7 @@ from memory_profiler import profile
 from torch_geometric.data import Data
 
 from topobench.data.preprocessor.ondisk_transductive import (
-    OnDiskTransductiveDataset,
+    OnDiskTransductivePreprocessor,
 )
 
 
@@ -75,7 +75,7 @@ def test_ondisk_approach(nodes=12000, avg_degree=25, seed=42):
 
         shutil.rmtree(data_dir)
 
-    dataset = OnDiskTransductiveDataset(
+    dataset = OnDiskTransductivePreprocessor(
         graph_data=data,
         data_dir=str(data_dir),
         max_structure_size=3,  # Triangles

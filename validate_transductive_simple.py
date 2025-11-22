@@ -158,7 +158,7 @@ def test_ondisk_transductive(nodes, avg_degree):
 
     try:
         from topobench.data.preprocessor.ondisk_transductive import (
-            OnDiskTransductiveDataset,
+            OnDiskTransductivePreprocessor,
         )
 
         # Generate same graph
@@ -177,7 +177,7 @@ def test_ondisk_transductive(nodes, avg_degree):
         start_time = time.time()
 
         # Create on-disk dataset (constant memory)
-        ondisk_dataset = OnDiskTransductiveDataset(
+        ondisk_dataset = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(data_dir),
             max_structure_size=3,  # Triangles
