@@ -342,6 +342,25 @@ Compare to in-memory: ~30GB+ would be needed.
 export OGB_MIRROR="https://alternative-mirror.com"
 ```
 
+### Issue: Process Killed During Index Building
+
+**Problem**: Process is killed (`[1] xxx killed`) during "Building index for graph"
+
+**Cause**: Memory spike when loading all structures into memory (fixed in latest version)
+
+**Solution**:
+```bash
+# Ensure you have the latest version with streaming batch insertion
+# The fix processes structures in chunks of 10,000 instead of loading all at once
+# Memory usage during indexing: ~500MB-1GB (constant)
+```
+
+**If still experiencing issues**:
+- Close other memory-intensive applications
+- Check system logs: `dmesg | grep -i oom` to confirm OOM killer
+- Monitor memory during indexing: `watch -n 1 free -h`
+- Try smaller batch size: `batch_size: int = 5000` in `sqlite_backend.py`
+
 ### Issue: Index Building Takes Too Long
 
 **Problem**: Index building > 30 minutes for triangles

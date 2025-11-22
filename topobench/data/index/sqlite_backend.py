@@ -166,7 +166,7 @@ class SQLiteIndexBackend(AbstractIndexBackend):
         self.conn.commit()
 
     def insert_batch(
-        self, structures: Iterator[tuple[int, list[int]]]
+        self, structures: Iterator[tuple[int, list[int]]], batch_size: int = 10000
     ) -> None:
         """Insert multiple structures efficiently using transactions.
 
@@ -174,32 +174,58 @@ class SQLiteIndexBackend(AbstractIndexBackend):
         ----------
         structures : Iterator of (int, list of int)
             Iterator yielding (structure_id, nodes) tuples.
+        batch_size : int, optional
+            Number of structures to process in each chunk (default: 10000).
+            Prevents memory issues with large graphs by streaming insertion.
         """
-        # Convert iterator to list for multiple passes
-        structures_list = list(structures)
+        # Process structures in chunks to avoid loading all into memory
+        structures_buffer = []
+        node_index_buffer = []
+        
+        for struct_id, nodes in structures:
+            # Add to buffers
+            structures_buffer.append(
+                (struct_id, json.dumps(sorted([int(n) for n in nodes])))
+            )
+            node_index_buffer.extend([
+                (int(node_id), struct_id) for node_id in nodes
+            ])
+            
+            # When buffer reaches batch_size, flush to database
+            if len(structures_buffer) >= batch_size:
+                self._flush_buffers(structures_buffer, node_index_buffer)
+                structures_buffer.clear()
+                node_index_buffer.clear()
+        
+        # Flush remaining structures
+        if structures_buffer:
+            self._flush_buffers(structures_buffer, node_index_buffer)
 
-        # Begin transaction for bulk insert
+    def _flush_buffers(
+        self, structures_buffer: list, node_index_buffer: list
+    ) -> None:
+        """Flush buffered structures to database in a transaction.
+
+        Parameters
+        ----------
+        structures_buffer : list
+            List of (structure_id, nodes_json) tuples.
+        node_index_buffer : list
+            List of (node_id, structure_id) tuples.
+        """
         self.conn.execute("BEGIN TRANSACTION")
-
+        
         try:
-            # Insert structures (convert nodes to Python ints)
+            # Insert structures
             self.conn.executemany(
                 "INSERT OR REPLACE INTO structures (structure_id, nodes_json) VALUES (?, ?)",
-                [
-                    (struct_id, json.dumps(sorted([int(n) for n in nodes])))
-                    for struct_id, nodes in structures_list
-                ],
+                structures_buffer,
             )
 
-            # Insert node indices (convert to Python ints)
-            node_index_data = [
-                (int(node_id), struct_id)
-                for struct_id, nodes in structures_list
-                for node_id in nodes
-            ]
+            # Insert node indices
             self.conn.executemany(
                 "INSERT INTO node_index (node_id, structure_id) VALUES (?, ?)",
-                node_index_data,
+                node_index_buffer,
             )
 
             self.conn.commit()

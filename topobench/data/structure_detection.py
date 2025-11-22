@@ -200,7 +200,7 @@ def count_triangles(graph: nx.Graph) -> int:
 
 
 def build_clique_index(
-    graph: nx.Graph, index_backend, max_size: int = None
+    graph: nx.Graph, index_backend, max_size: int = None, show_progress: bool = True
 ) -> None:
     """Build structure index for all cliques in graph.
 
@@ -216,6 +216,8 @@ def build_clique_index(
     max_size : int, optional
         Maximum clique size to index. If None, indexes all maximal cliques.
         If specified, indexes all k-cliques for k <= max_size (default: None).
+    show_progress : bool, optional
+        If True, display progress bar during indexing (default: True).
 
     Examples
     --------
@@ -232,7 +234,7 @@ def build_clique_index(
     Notes
     -----
     - Uses streaming enumeration for constant memory usage
-    - Progress is not displayed (add tqdm for large graphs if needed)
+    - Progress bar displays structures processed (requires tqdm)
     - Index must be opened before calling this function
     - When max_size is specified, enumerates all cliques of that size
       (not just maximal cliques filtered by size)
@@ -244,6 +246,21 @@ def build_clique_index(
     else:
         # Enumerate all maximal cliques
         clique_iterator = enumerate_cliques_streaming(graph, max_size=None)
+    
+    # Wrap with progress bar if requested
+    if show_progress:
+        try:
+            from tqdm import tqdm
+            # We don't know total count in advance, so use unbounded progress bar
+            clique_iterator = tqdm(
+                clique_iterator,
+                desc=f"Indexing {max_size}-cliques" if max_size else "Indexing cliques",
+                unit=" structures",
+                mininterval=0.5,
+            )
+        except ImportError:
+            # tqdm not available, proceed without progress bar
+            pass
     
     index_backend.insert_batch(clique_iterator)
 
