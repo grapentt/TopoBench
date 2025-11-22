@@ -110,10 +110,26 @@ class OGBNProductsLoader(AbstractLoader):
             ) from e
 
         try:
-            # Load dataset using OGB
-            dataset = NodePropPredDataset(
-                name="ogbn-products", root=str(self.root_data_dir)
-            )
+            # Patch torch.load for PyTorch 2.6+ compatibility
+            # OGB uses pickle which requires weights_only=False
+            original_load = torch.load
+            
+            def patched_load(*args, **kwargs):
+                # Force weights_only=False for OGB compatibility
+                if 'weights_only' not in kwargs:
+                    kwargs['weights_only'] = False
+                return original_load(*args, **kwargs)
+            
+            torch.load = patched_load
+            
+            try:
+                # Load dataset using OGB
+                dataset = NodePropPredDataset(
+                    name="ogbn-products", root=str(self.root_data_dir)
+                )
+            finally:
+                # Restore original torch.load
+                torch.load = original_load
 
             # Get graph and splits
             graph, labels = dataset[0]  # graph is a dict, labels is numpy array

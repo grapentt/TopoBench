@@ -329,6 +329,22 @@ Compare to in-memory: ~30GB+ would be needed.
 
 ## Troubleshooting
 
+### Issue: PyTorch 2.6+ Weights Only Error
+
+**Problem**: `_pickle.UnpicklingError: Weights only load failed`
+
+**Cause**: PyTorch 2.6 changed `torch.load()` default to `weights_only=True`
+
+**Solution**: 
+✅ **Fixed in latest version** - The loader now automatically patches `torch.load()` for OGB compatibility.
+
+If using older version, update to latest or manually add:
+```python
+# Temporary workaround (not needed with latest version)
+original_load = torch.load
+torch.load = lambda *args, **kwargs: original_load(*args, weights_only=False, **kwargs)
+```
+
 ### Issue: OGB Download Fails
 
 **Problem**: Network error downloading dataset
