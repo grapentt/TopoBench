@@ -44,7 +44,7 @@ from topobench.dataloader import NodeBatchSampler, OnDiskTransductiveCollate
 from topobench.loss.loss import TBLoss
 from topobench.model.model import TBModel
 from topobench.nn.backbones.simplicial import SCCNNCustom
-from topobench.nn.readouts.simplicial_readout import SimplicialReadout
+from topobench.nn.readouts.mlp_readout import MLPReadout
 from topobench.optimizer.optimizer import TBOptimizer
 
 
@@ -106,7 +106,7 @@ def create_ogbn_model(in_channels, hidden_channels, out_channels, num_layers=2, 
     
     Uses proper TopoBench TBModel with separate components:
     - SCCNNCustom backbone for simplicial complex learning
-    - SimplicialReadout for node classification
+    - MLPReadout for node classification
     - TBLoss with cross entropy
     - TBOptimizer with Adam
     """
@@ -123,10 +123,12 @@ def create_ogbn_model(in_channels, hidden_channels, out_channels, num_layers=2, 
     )
     
     # Readout for node classification
-    readout = SimplicialReadout(
+    readout = MLPReadout(
         in_channels=hidden_channels,
+        hidden_layers=[hidden_channels],
         out_channels=out_channels,
         task_level="node",
+        pooling_type="sum",
     )
     
     # Loss function
@@ -300,7 +302,7 @@ def main():
     print(f"✓ Model created with {num_params:,} parameters")
     print(f"  - Using TopoBench TBModel with:")
     print(f"    * Backbone: SCCNNCustom (Simplicial Complex CNN)")
-    print(f"    * Readout: SimplicialReadout (node-level)")
+    print(f"    * Readout: MLPReadout (node-level)")
     print(f"    * Loss: TBLoss (cross_entropy)")
     print(f"    * Optimizer: TBOptimizer (Adam)")
     print()
