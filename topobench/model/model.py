@@ -31,6 +31,8 @@ class TBModel(LightningModule):
         The evaluator class (default: None).
     optimizer : Any, optional
         The optimizer class (default: None).
+    compile : bool, optional
+        Whether to compile the model using `torch.compile` (default: False).
     **kwargs : Any
         Additional keyword arguments.
     """
@@ -44,6 +46,7 @@ class TBModel(LightningModule):
         feature_encoder: torch.nn.Module | None = None,
         evaluator: Any = None,
         optimizer: Any = None,
+        compile: bool = False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -377,4 +380,5 @@ class TBModel(LightningModule):
             + list(self.feature_encoder.parameters())
         )
 
+        return optimizer_config
         return optimizer_config
