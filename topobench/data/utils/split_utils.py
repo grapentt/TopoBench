@@ -180,7 +180,7 @@ def random_splitting(labels, parameters, root=None, global_data_seed=42):
     return split_idx
 
 
-def assign_train_val_test_mask_to_graphs(dataset, split_idx):
+def assign_train_val_test_mask_to_graphs(dataset, split_idx, use_lazy=False):
     """Split the graph dataset into train, validation, and test datasets.
 
     Parameters
@@ -189,13 +189,25 @@ def assign_train_val_test_mask_to_graphs(dataset, split_idx):
         Considered dataset.
     split_idx : dict
         Dictionary containing the train, validation, and test indices.
+    use_lazy : bool, optional
+        Use lazy subsets for O(1) memory (default: False for backward compatibility).
 
     Returns
     -------
     tuple:
         Tuple containing the train, validation, and test datasets.
     """
+    if use_lazy:
+        # Use lazy splits for O(1) memory usage
+        from topobench.data.datasets import LazySubset
 
+        return (
+            LazySubset(dataset, split_idx["train"]),
+            LazySubset(dataset, split_idx["valid"]),
+            LazySubset(dataset, split_idx["test"]),
+        )
+
+    # Traditional approach: load all samples and assign masks
     data_train_lst, data_val_lst, data_test_lst = [], [], []
 
     # Assign masks directly by iterating over pre-split indices
@@ -287,7 +299,7 @@ def load_transductive_splits(dataset, parameters):
     return DataloadDataset([data]), None, None
 
 
-def load_inductive_splits(dataset, parameters):
+def load_inductive_splits(dataset, parameters, use_lazy=False):
     r"""Load multiple-graph datasets with the specified split.
 
     Parameters
@@ -296,6 +308,9 @@ def load_inductive_splits(dataset, parameters):
         Graph dataset.
     parameters : DictConfig
         Configuration parameters.
+    use_lazy : bool, optional
+        Use lazy subsets for O(1) memory usage (default: False for backward compatibility).
+        Recommended for large on-disk datasets.
 
     Returns
     -------
@@ -341,7 +356,9 @@ def load_inductive_splits(dataset, parameters):
         )
 
     train_dataset, val_dataset, test_dataset = (
-        assign_train_val_test_mask_to_graphs(dataset, split_idx)
+        assign_train_val_test_mask_to_graphs(
+            dataset, split_idx, use_lazy=use_lazy
+        )
     )
 
     return train_dataset, val_dataset, test_dataset

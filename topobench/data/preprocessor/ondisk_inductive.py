@@ -677,7 +677,9 @@ class OnDiskInductivePreprocessor(Dataset):
         # Note: The split utility extracts labels `[data.y for data in dataset]` which
         # accumulates labels in memory (O(n) for labels), but labels are typically extremely small
         # (single values/tensors) compared to full graph data (x, edge_index, etc.).
-        return load_inductive_splits(self, split_params)
+        #
+        # Automatically use lazy splits for on-disk datasets (O(1) memory per split)
+        return load_inductive_splits(self, split_params, use_lazy=True)
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache performance statistics.
