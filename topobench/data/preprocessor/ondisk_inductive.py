@@ -72,9 +72,16 @@ class OnDiskInductivePreprocessor(Dataset):
         If None, uses cpu_count-1 (leaves 1 core for system).
         Parallel processing provides 4-8× speedup on large datasets.
 
-        Note: Requires dataset to be picklable for multiprocessing. All standard
-        PyG datasets (TUDataset, OGB, etc.) are picklable. If dataset cannot be
-        pickled, automatically falls back to sequential processing with a warning.
+        **Parallel Performance Note**: Speedup depends on dataset pickling overhead.
+        When num_workers > 1, the source dataset is pickled and sent to each worker.
+
+        - ✅ **Lightweight datasets** (file-based, on-demand loading): 5-7× speedup
+        - ⚠️ **InMemoryDataset** (pre-loaded data): 2-3× speedup or slower
+        - 🚫 **OnDiskDataset** (unpicklable connections): Not supported
+
+        For best parallel performance, use datasets that load data on-demand in
+        `__getitem__` rather than pre-loading into memory. See documentation on
+        "Dataset Requirements for Parallel Processing" for details.
     batch_size : int, optional
         Batch size for parallel processing (default: 32).
         Larger batches reduce overhead but may increase memory during processing.
@@ -247,7 +254,8 @@ class OnDiskInductivePreprocessor(Dataset):
             )
 
         # Load sample from disk
-        data = torch.load(sample_path)
+        # PyTorch 2.6+ requires weights_only=False for PyG Data objects
+        data = torch.load(sample_path, weights_only=False)
         return data
 
     def _should_process(self) -> bool:
