@@ -74,14 +74,8 @@ class OnDiskInductivePreprocessor(Dataset):
 
         **Parallel Performance Note**: Speedup depends on dataset pickling overhead.
         When num_workers > 1, the source dataset is pickled and sent to each worker.
-
-        - ✅ **Lightweight datasets** (file-based, on-demand loading): 5-7× speedup
-        - ⚠️ **InMemoryDataset** (pre-loaded data): 2-3× speedup or slower
-        - 🚫 **OnDiskDataset** (unpicklable connections): Not supported
-
         For best parallel performance, use datasets that load data on-demand in
-        `__getitem__` rather than pre-loading into memory. See documentation on
-        "Dataset Requirements for Parallel Processing" for details.
+        `__getitem__` rather than pre-loading into memory.
     batch_size : int, optional
         Batch size for parallel processing (default: 32).
         Larger batches reduce overhead but may increase memory during processing.
