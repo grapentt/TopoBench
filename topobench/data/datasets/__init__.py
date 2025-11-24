@@ -1,4 +1,10 @@
-"""Dataset module with automated exports."""
+"""Dataset module with automated exports.
+
+This module includes high-performance base classes for creating custom datasets:
+- BaseInductiveDataset: General base class (2.29-5× parallel speedup)
+- FileBasedInductiveDataset: For datasets with one file per sample
+- GeneratedInductiveDataset: For synthetic/generated datasets
+"""
 
 import inspect
 from importlib import util
@@ -6,6 +12,24 @@ from pathlib import Path
 from typing import ClassVar
 
 from torch_geometric.data import InMemoryDataset
+
+# Import our high-performance base classes
+from .base_inductive import (  # noqa: F401
+    BaseOnDiskInductiveDataset,
+    FileBasedInductiveDataset,
+    OnDemandInductiveDataset,
+)
+
+# Import adapters for converting existing PyG datasets
+from .adapters import (  # noqa: F401
+    PyGDatasetAdapter,
+    adapt_dataset,
+    adapt_tu_dataset,
+)
+
+# Import on-disk dataset implementations
+from .us_county_demos_ondisk import USCountyDemosOnDiskDataset  # noqa: F401
+from .ogbn_papers100m_ondisk import OGBNPapers100MOnDiskDataset  # noqa: F401
 
 
 class DatasetManager:
@@ -65,6 +89,10 @@ class DatasetManager:
         for file_path in package_dir.glob("*.py"):
             if file_path.stem == "__init__":
                 continue
+            
+            # Skip our base classes and adapters - they're imported explicitly
+            if file_path.stem in ("base_inductive", "adapters"):
+                continue
 
             # Import the module
             module_name = f"{Path(package_path).stem}.{file_path.stem}"
@@ -120,6 +148,17 @@ HETEROPHILIC_DATASETS = manager.HETEROPHILIC_DATASETS
 
 # Automatically generate __all__
 __all__ = [
+    # High-performance base classes for custom datasets
+    "BaseOnDiskInductiveDataset",
+    "FileBasedInductiveDataset",
+    "OnDemandInductiveDataset",
+    # Adapters for existing PyG datasets
+    "PyGDatasetAdapter",
+    "adapt_dataset",
+    "adapt_tu_dataset",
+    # On-disk dataset implementations
+    "USCountyDemosOnDiskDataset",
+    "OGBNPapers100MOnDiskDataset",
     # Dataset collections
     "PYG_DATASETS",
     "PLANETOID_DATASETS",

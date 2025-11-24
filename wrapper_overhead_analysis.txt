@@ -1,0 +1,112 @@
+================================================================================
+WRAPPER OVERHEAD ANALYSIS
+================================================================================
+
+================================================================================
+PHASE 1: Dataset Loading & Pickle Analysis (50 samples)
+================================================================================
+
+1. InMemoryDataset (TinyInMemoryDataset)
+   Load time: 0.007s
+   Length: 50
+   Type: TinyInMemoryDataset
+   Pickle size: 22.57 KB
+   Pickle time: 0.001s
+
+2. On-Demand Dataset (TinyOnDemandDataset)
+   Load time: 0.000s
+   Length: 50
+   Type: TinyOnDemandDataset
+   Pickle size: 0.09 KB
+   Pickle time: 0.000s
+
+3. Comparison
+   Pickle size reduction: 259.6×
+   Pickle time reduction: 21.1×
+
+================================================================================
+PHASE 2: Single Sample Loading Speed
+================================================================================
+
+1. InMemoryDataset sample access (average over 50 samples)
+   Average time: 0.142ms per sample
+
+2. Adapted dataset sample access (average over 50 samples)
+   Average time: 0.458ms per sample
+
+3. Single sample overhead: 3.24× slower
+
+================================================================================
+PHASE 3: Parallel Processing Performance
+================================================================================
+
+--- Workers: 1 ---
+
+1. InMemoryDataset (workers=1)
+   Total time: 0.024s
+   Throughput: 2045.1 samples/sec
+
+2. Adapted dataset (workers=1)
+   Total time: 0.043s
+   Throughput: 1170.4 samples/sec
+
+3. Relative performance: 0.57× (>1.0 means adapted is faster)
+   Overhead: 42.8% slower than InMemoryDataset
+
+--- Workers: 2 ---
+
+1. InMemoryDataset (workers=2)
+   Total time: 0.112s
+   Throughput: 447.6 samples/sec
+
+2. Adapted dataset (workers=2)
+   Total time: 0.060s
+   Throughput: 839.7 samples/sec
+
+3. Relative performance: 1.88× (>1.0 means adapted is faster)
+   Benefit: 87.6% faster than InMemoryDataset
+
+================================================================================
+PHASE 4: Parallel Scaling Analysis
+================================================================================
+
+Parallel efficiency (compared to 1 worker baseline):
+
+Baseline (1 worker):
+  InMemoryDataset: 0.034s
+  Adapted dataset: 0.058s
+
+Parallel (2 workers):
+  InMemoryDataset: 0.086s → 0.39× speedup
+  Adapted dataset: 0.070s → 0.82× speedup
+
+Parallel efficiency (% of ideal 2× speedup):
+  InMemoryDataset: 19.7%
+  Adapted dataset: 41.0%
+
+================================================================================
+SUMMARY
+================================================================================
+
+1. Pickle Overhead:
+   - InMemoryDataset: 22.57 KB, 0.001s to pickle
+   - Adapted dataset: 0.09 KB, 0.000s to pickle
+   - Reduction: 259.6× smaller
+
+2. Single Sample Access:
+   - InMemoryDataset: 0.142ms (direct memory access)
+   - Adapted dataset: 0.458ms (file I/O)
+   - Overhead: 3.24× slower per sample
+
+3. Parallel Scaling:
+   - InMemoryDataset: 19.7% efficiency with 2 workers
+   - Adapted dataset: 41.0% efficiency with 2 workers
+
+4. Overall Parallel Performance (2 workers):
+   - Adapted dataset is 1.23× FASTER
+
+5. Key Insights:
+   ✅ Adapted dataset has 21.3% better parallel efficiency
+   ✅ This is due to 260× smaller pickle overhead
+
+================================================================================

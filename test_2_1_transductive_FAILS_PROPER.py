@@ -1,4 +1,4 @@
-y laoder"""Test 2.1: In-Memory Transductive with TopoBench Workflow - Expected to FAIL (OOM).
+"""Test 2.1: In-Memory Transductive with TopoBench Workflow - Expected to FAIL (OOM).
 
 Uses proper TopoBench workflow with synthetic transductive dataset:
 1. Load dataset with SyntheticTransductiveLoader

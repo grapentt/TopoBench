@@ -45,7 +45,8 @@ class SyntheticTransductiveLoader:
             )
 
         # Load data
-        data = torch.load(data_file)
+        # PyTorch 2.6+ requires weights_only=False for PyG Data objects
+        data = torch.load(data_file, weights_only=False)
 
         # Load metadata
         if metadata_file.exists():

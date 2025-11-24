@@ -54,12 +54,16 @@ class ModuleExportsManager:
             if file_path.stem == "__init__":
                 continue
 
-            # Import the module
-            module_name = f"{Path(package_path).stem}.{file_path.stem}"
+            # Import the module with correct path for pickling
+            module_name = f"topobench.transforms.data_manipulations.{file_path.stem}"
             spec = util.spec_from_file_location(module_name, file_path)
             if spec and spec.loader:
                 module = util.module_from_spec(spec)
                 spec.loader.exec_module(module)
+                
+                # Register module in sys.modules for pickling
+                import sys
+                sys.modules[module_name] = module
 
                 # Find all manipulation classes in the module
                 new_manipulations = {

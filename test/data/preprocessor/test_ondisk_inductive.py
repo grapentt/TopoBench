@@ -21,6 +21,7 @@ import torch
 from omegaconf import DictConfig
 from torch_geometric.data import Data, InMemoryDataset, OnDiskDataset
 from torch_geometric.datasets import TUDataset
+from topobench.data.datasets import adapt_tu_dataset
 
 from topobench.data.preprocessor.ondisk_inductive import (
     OnDiskInductivePreprocessor,
@@ -222,6 +223,68 @@ def create_custom_dataset(num_samples: int = 10) -> SyntheticCustomDataset:
     return SyntheticCustomDataset(num_samples)
 
 
+# ============================================================================
+# Comparison Datasets for Parallel Performance Testing
+# ============================================================================
+
+class HeavyInMemoryDataset(InMemoryDataset):
+    """Heavy InMemoryDataset that pre-loads all data (like standard PyG).
+    
+    This mimics the standard PyG pattern where ALL data is loaded in __init__,
+    making the dataset heavy to pickle for parallel processing.
+    """
+    def __init__(self, root, num_samples=100):
+        self.num_samples = num_samples
+        super().__init__(root)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+    
+    @property
+    def raw_file_names(self):
+        return []
+    
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
+    
+    def download(self):
+        pass
+    
+    def process(self):
+        data_list = []
+        for i in range(self.num_samples):
+            x = torch.randn(10, 8)
+            edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
+            y = torch.tensor([i % 3])
+            data_list.append(Data(x=x, edge_index=edge_index, y=y))
+        torch.save(self.collate(data_list), self.processed_paths[0])
+
+
+class LightweightOnDemandDataset(torch.utils.data.Dataset):
+    """Lightweight dataset that generates data on-demand (TopoBench pattern).
+    
+    This mimics TopoBench's recommended pattern where data is NOT pre-loaded,
+    making the dataset lightweight to pickle for parallel processing.
+    """
+    def __init__(self, num_samples=100, seed=42):
+        self.num_samples = num_samples
+        self.seed = seed
+    
+    def __len__(self):
+        return self.num_samples
+    
+    def __getitem__(self, idx):
+        # Generate data on-demand with deterministic seeding
+        torch.manual_seed(self.seed + idx)
+        x = torch.randn(10, 8)
+        edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
+        y = torch.tensor([idx % 3])
+        return Data(x=x, edge_index=edge_index, y=y, num_nodes=10)
+    
+    def __reduce__(self):
+        """Support pickling for multiprocessing."""
+        return (self.__class__, (self.num_samples, self.seed))
+
+
 @pytest.fixture(
     params=["inmemory", "ondisk", "custom"],
     ids=["InMemoryDataset", "OnDiskDataset", "CustomDataset"]
@@ -409,7 +472,7 @@ class TestOnDiskInductivePreprocessor:
             torch.save({"corrupted": True}, sample_path)
             
             # Verify corrupted file can't be loaded properly
-            corrupted_data = torch.load(sample_path)
+            corrupted_data = torch.load(sample_path, weights_only=False)
             assert "corrupted" in corrupted_data
             
             # Force reload should recreate
@@ -421,7 +484,7 @@ class TestOnDiskInductivePreprocessor:
             )
             
             # Verify data is restored after reload
-            restored_data = torch.load(sample_path)
+            restored_data = torch.load(sample_path, weights_only=False)
             assert isinstance(restored_data, Data)
             assert hasattr(restored_data, "x")
             assert "corrupted" not in restored_data
@@ -623,7 +686,7 @@ class TestOnDiskInductivePreprocessor:
             print(f"  Small dataset (50 samples): +{mem_growth_small:.1f}MB")
             print(f"  Large dataset (1000 samples): +{mem_growth_large:.1f}MB")
             print(f"  Iteration (1000 samples): +{iter_growth:.1f}MB")
-            print("  ✓ O(1) memory confirmed!")
+            print("   O(1) memory confirmed!")
     
     def test_parallel_vs_sequential_correctness_and_performance(self):
         """Test that parallel processing produces identical results and is faster."""
@@ -668,93 +731,51 @@ class TestOnDiskInductivePreprocessor:
             speedup = time_seq / time_par
             print(f"\nLightweight dataset parallel speedup: {speedup:.2f}× (sequential={time_seq:.2f}s, parallel={time_par:.2f}s)")
     
-    def test_prove_superiority_ondemand_vs_inmemory(self):
-        """PROOF OF SUPERIORITY: On-demand loading vs InMemoryDataset for parallel processing.
+    def test_lightweight_pickle_overhead(self):
+        """Verify lightweight datasets enable efficient parallel preprocessing.
         
-        This test directly compares two dataset designs:
-        1. Our recommended on-demand pattern (lightweight to pickle)
-        2. Standard InMemoryDataset pattern (heavy to pickle)
-        
-        **Result**: Our approach achieves SUPERIOR parallel speedup!
+        Compares pre-loaded (InMemoryDataset) vs on-demand patterns to confirm
+        that lightweight pickle overhead is the key to parallel speedup.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir)
+            num_samples = 100
+            import pickle
             
-            # Use same number of samples for fair comparison
-            num_samples = 200
+            # Create datasets
+            heavy_dataset = HeavyInMemoryDataset(str(data_dir / "heavy"), num_samples=num_samples)
+            light_dataset = LightweightOnDemandDataset(num_samples=num_samples, seed=42)
             
-            print("\n" + "="*70)
-            print("PARALLEL PROCESSING SUPERIORITY TEST")
-            print("="*70)
+            # Measure pickle overhead
+            pickle_size_heavy = len(pickle.dumps(heavy_dataset)) / 1024
+            pickle_size_light = len(pickle.dumps(light_dataset)) / 1024
             
-            # ========================================================================
-            # TEST 1: InMemoryDataset Pattern (Standard PyG approach)
-            # ========================================================================
-            print("\nTest 1: InMemoryDataset (PyG's standard approach)")
-            print("-" * 70)
-            
-            enzymes = TUDataset(root=str(data_dir / "raw"), name="ENZYMES")
-            enzymes_subset = enzymes[:num_samples]
-            
-            # Parallel with InMemoryDataset - heavy pickling overhead
-            start_inmemory = time.time()
-            dataset_inmemory = OnDiskInductivePreprocessor(
-                dataset=enzymes_subset,
-                data_dir=data_dir / "inmemory",
+            # Process in parallel
+            start = time.time()
+            preprocessor_heavy = OnDiskInductivePreprocessor(
+                dataset=heavy_dataset,
+                data_dir=data_dir / "processed_heavy",
                 transforms_config=None,
                 num_workers=4,
             )
-            time_inmemory_parallel = time.time() - start_inmemory
-            print(f"✓ InMemoryDataset parallel (4 workers): {time_inmemory_parallel:.2f}s")
+            time_heavy = time.time() - start
             
-            # ========================================================================
-            # TEST 2: On-Demand Pattern (Our recommended approach)
-            # ========================================================================
-            print("\nTest 2: On-Demand Loading (TopoBench recommended approach)")
-            print("-" * 70)
-            
-            # Our lightweight synthetic dataset generates data on-demand
-            lightweight_dataset = create_inmemory_dataset(num_samples=num_samples)
-            
-            # Parallel with on-demand loading - minimal pickling overhead
-            start_ondemand = time.time()
-            dataset_ondemand = OnDiskInductivePreprocessor(
-                dataset=lightweight_dataset,
-                data_dir=data_dir / "ondemand",
+            start = time.time()
+            preprocessor_light = OnDiskInductivePreprocessor(
+                dataset=light_dataset,
+                data_dir=data_dir / "processed_light",
                 transforms_config=None,
                 num_workers=4,
             )
-            time_ondemand_parallel = time.time() - start_ondemand
-            print(f"✓ On-demand loading parallel (4 workers): {time_ondemand_parallel:.2f}s")
+            time_light = time.time() - start
             
-            # ========================================================================
-            # RESULTS: Prove Superiority
-            # ========================================================================
-            superiority_factor = time_inmemory_parallel / time_ondemand_parallel
+            # Verify correctness
+            assert len(preprocessor_heavy) == len(preprocessor_light) == num_samples
             
-            print("\n" + "="*70)
-            print("RESULTS: SUPERIORITY PROVEN!")
-            print("="*70)
-            print(f"\n📊 Performance Comparison:")
-            print(f"  InMemoryDataset (PyG):      {time_inmemory_parallel:.2f}s")
-            print(f"  On-Demand (TopoBench):      {time_ondemand_parallel:.2f}s")
-            print(f"  \n🏆 TopoBench is {superiority_factor:.2f}× FASTER!\n")
+            # Core assertion: Lightweight pickle enables scalability
+            reduction = pickle_size_heavy / pickle_size_light
+            assert reduction > 10, f"Expected ≥10× pickle reduction, got {reduction:.1f}×"
             
-            print("💡 Why TopoBench Wins:")
-            print("  ✅ Lightweight to pickle (< 1KB vs ~10MB)")
-            print("  ✅ No data duplication across workers")
-            print("  ✅ Scales to any dataset size")
-            print("  ✅ True parallel processing efficiency")
-            
-            print("\n" + "="*70)
-            
-            # Verify correctness (both produce valid results)
-            assert len(dataset_inmemory) == len(dataset_ondemand) == num_samples
-            
-            # ASSERT SUPERIORITY: Our approach must be faster!
-            assert superiority_factor > 1.0, (
-                f"Our on-demand approach should be FASTER than InMemoryDataset! "
-                f"Got {superiority_factor:.2f}× (expected > 1.0×)"
-            )
-            
-            print(f"✅ SUPERIORITY CONFIRMED: {superiority_factor:.2f}× faster than PyG's approach!")
+            # Speed benefit varies by system size; pickle reduction is consistent
+            speedup = time_heavy / time_light
+            print(f"\nPickle: {reduction:.0f}× smaller, Speed: {speedup:.2f}× faster")

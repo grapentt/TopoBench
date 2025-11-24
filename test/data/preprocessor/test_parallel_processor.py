@@ -123,7 +123,7 @@ class TestParallelProcessor:
             for idx in range(50):
                 sample_path = output_dir / f"sample_{idx:06d}.pt"
                 assert sample_path.exists()
-                data = torch.load(sample_path)
+                data = torch.load(sample_path, weights_only=False)
                 assert data.x.shape == (10, 8)
                 assert data.edge_index.shape == (2, 20)
 
@@ -151,7 +151,7 @@ class TestParallelProcessor:
             for idx in range(100):
                 sample_path = output_dir / f"sample_{idx:06d}.pt"
                 assert sample_path.exists()
-                data = torch.load(sample_path)
+                data = torch.load(sample_path, weights_only=False)
                 assert data.y.item() == idx % 5
 
             # Test 2: error handling
@@ -200,7 +200,7 @@ class TestParallelProcessor:
             for idx in range(20):
                 sample_path = output_dir3 / f"sample_{idx:06d}.pt"
                 assert sample_path.exists()
-                data = torch.load(sample_path)
+                data = torch.load(sample_path, weights_only=False)
                 assert data.x.shape == (10, 8)
 
     def test_auto_worker_count(self):
@@ -245,7 +245,7 @@ class TestParallelProcessor:
                 dataset=dataset,
                 transform=transform,
                 output_dir=output_dir_seq,
-                num_samples=200,
+                num_samples=500,
             )
             time_seq = time.time() - start
 
@@ -255,16 +255,16 @@ class TestParallelProcessor:
                 dataset=dataset,
                 transform=transform,
                 output_dir=output_dir_par,
-                num_samples=200,
+                num_samples=500,
             )
             time_par = time.time() - start
 
-            assert results_seq["success"] == 200
-            assert results_par["success"] == 200
+            assert results_seq["success"] == 500
+            assert results_par["success"] == 500
 
-            for idx in range(200):
-                data_seq = torch.load(output_dir_seq / f"sample_{idx:06d}.pt")
-                data_par = torch.load(output_dir_par / f"sample_{idx:06d}.pt")
+            for idx in range(500):
+                data_seq = torch.load(output_dir_seq / f"sample_{idx:06d}.pt", weights_only=False)
+                data_par = torch.load(output_dir_par / f"sample_{idx:06d}.pt", weights_only=False)
                 assert data_seq.y.item() == data_par.y.item()
                 assert data_seq.x.shape == data_par.x.shape
 

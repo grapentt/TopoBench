@@ -252,7 +252,7 @@ class ParallelProcessor:
             return self._process_sequential(
                 dataset, transform, output_dir, num_samples
             )
-
+        print("Parallel processing starting...")
         batches = [
             list(range(i, min(i + self.batch_size, num_samples)))
             for i in range(0, num_samples, self.batch_size)
@@ -264,6 +264,7 @@ class ParallelProcessor:
         try:
             # Use ProcessPoolExecutor for parallelism
             # Fork is 10-20× faster on Linux; spawn is safer on macOS/Windows
+            print("With plattform: ", sys.platform)
             if sys.platform == "linux":
                 mp_context = get_context("fork")
             else:
