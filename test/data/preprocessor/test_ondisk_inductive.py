@@ -26,20 +26,8 @@ from topobench.data.preprocessor.ondisk_inductive import (
     OnDiskInductivePreprocessor,
 )
 
-# ============================================================================
-# IMPORTANT: Dataset Design for Parallel Processing
-# ============================================================================
-# For parallel preprocessing to achieve speedup, the source dataset must be
-# LIGHTWEIGHT TO PICKLE. When num_workers > 1, Python's multiprocessing pickles
-# the entire dataset and sends it to each worker.
-#
-# ✅ LIGHTWEIGHT (fast parallel): File-based, on-demand generation, minimal state
-# ❌ HEAVY (slow parallel): InMemoryDataset with pre-loaded self.data/self.slices
-#
-# These test datasets are defined at module level for picklability AND use
-# on-demand generation to avoid pickling overhead.
-# See PARALLEL_PREPROCESSING_DATASET_REQUIREMENTS.md for details.
-# ============================================================================
+# Test datasets at module level for picklability in multiprocessing.
+# Use on-demand generation to minimize pickle overhead (see B1_LONGTERM.md).
 
 class SyntheticInMemoryDataset(InMemoryDataset):
     """Synthetic :class:`InMemoryDataset` used in tests.
@@ -668,93 +656,265 @@ class TestOnDiskInductivePreprocessor:
             speedup = time_seq / time_par
             print(f"\nLightweight dataset parallel speedup: {speedup:.2f}× (sequential={time_seq:.2f}s, parallel={time_par:.2f}s)")
     
-    def test_prove_superiority_ondemand_vs_inmemory(self):
-        """PROOF OF SUPERIORITY: On-demand loading vs InMemoryDataset for parallel processing.
+    def test_ondemand_vs_inmemory_parallel_speedup(self):
+        """Prove on-demand loading achieves better parallel speedup than InMemoryDataset.
         
-        This test directly compares two dataset designs:
-        1. Our recommended on-demand pattern (lightweight to pickle)
-        2. Standard InMemoryDataset pattern (heavy to pickle)
-        
-        **Result**: Our approach achieves SUPERIOR parallel speedup!
+        Compares lightweight on-demand pattern vs heavy InMemoryDataset for parallel
+        preprocessing. On-demand should be faster due to minimal pickle overhead.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir)
-            
-            # Use same number of samples for fair comparison
             num_samples = 200
             
-            print("\n" + "="*70)
-            print("PARALLEL PROCESSING SUPERIORITY TEST")
-            print("="*70)
-            
-            # ========================================================================
-            # TEST 1: InMemoryDataset Pattern (Standard PyG approach)
-            # ========================================================================
-            print("\nTest 1: InMemoryDataset (PyG's standard approach)")
-            print("-" * 70)
-            
+            # Test 1: InMemoryDataset (heavy pickling)
             enzymes = TUDataset(root=str(data_dir / "raw"), name="ENZYMES")
             enzymes_subset = enzymes[:num_samples]
             
-            # Parallel with InMemoryDataset - heavy pickling overhead
-            start_inmemory = time.time()
+            start = time.time()
             dataset_inmemory = OnDiskInductivePreprocessor(
                 dataset=enzymes_subset,
                 data_dir=data_dir / "inmemory",
-                transforms_config=None,
                 num_workers=4,
             )
-            time_inmemory_parallel = time.time() - start_inmemory
-            print(f"✓ InMemoryDataset parallel (4 workers): {time_inmemory_parallel:.2f}s")
+            time_inmemory = time.time() - start
             
-            # ========================================================================
-            # TEST 2: On-Demand Pattern (Our recommended approach)
-            # ========================================================================
-            print("\nTest 2: On-Demand Loading (TopoBench recommended approach)")
-            print("-" * 70)
-            
-            # Our lightweight synthetic dataset generates data on-demand
+            # Test 2: On-demand pattern (lightweight pickling)
             lightweight_dataset = create_inmemory_dataset(num_samples=num_samples)
             
-            # Parallel with on-demand loading - minimal pickling overhead
-            start_ondemand = time.time()
+            start = time.time()
             dataset_ondemand = OnDiskInductivePreprocessor(
                 dataset=lightweight_dataset,
                 data_dir=data_dir / "ondemand",
-                transforms_config=None,
                 num_workers=4,
             )
-            time_ondemand_parallel = time.time() - start_ondemand
-            print(f"✓ On-demand loading parallel (4 workers): {time_ondemand_parallel:.2f}s")
+            time_ondemand = time.time() - start
             
-            # ========================================================================
-            # RESULTS: Prove Superiority
-            # ========================================================================
-            superiority_factor = time_inmemory_parallel / time_ondemand_parallel
+            speedup = time_inmemory / time_ondemand
             
-            print("\n" + "="*70)
-            print("RESULTS: SUPERIORITY PROVEN!")
-            print("="*70)
-            print(f"\n📊 Performance Comparison:")
-            print(f"  InMemoryDataset (PyG):      {time_inmemory_parallel:.2f}s")
-            print(f"  On-Demand (TopoBench):      {time_ondemand_parallel:.2f}s")
-            print(f"  \n🏆 TopoBench is {superiority_factor:.2f}× FASTER!\n")
-            
-            print("💡 Why TopoBench Wins:")
-            print("  ✅ Lightweight to pickle (< 1KB vs ~10MB)")
-            print("  ✅ No data duplication across workers")
-            print("  ✅ Scales to any dataset size")
-            print("  ✅ True parallel processing efficiency")
-            
-            print("\n" + "="*70)
-            
-            # Verify correctness (both produce valid results)
+            # Verify correctness
             assert len(dataset_inmemory) == len(dataset_ondemand) == num_samples
             
-            # ASSERT SUPERIORITY: Our approach must be faster!
-            assert superiority_factor > 1.0, (
-                f"Our on-demand approach should be FASTER than InMemoryDataset! "
-                f"Got {superiority_factor:.2f}× (expected > 1.0×)"
+            # Assert on-demand is faster (conservative threshold)
+            assert speedup > 1.0, (
+                f"On-demand speedup {speedup:.2f}× should be >1.0× vs InMemoryDataset"
+            )
+
+
+class TestMemoryMappedStorageIntegration:
+    """Test MemoryMappedStorage integration proving I/O speedup and compression benefits.
+    
+    Uses class-level fixtures to reduce overhead by sharing preprocessor instances.
+    """
+
+    @pytest.fixture(scope="class")
+    def temp_dir_class(self):
+        """Class-level temporary directory (shared across tests).
+        
+        Yields
+        ------
+        Path
+            Temporary directory path.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture(scope="class")
+    def source_dataset(self, temp_dir_class):
+        """Shared source dataset for all tests.
+        
+        Returns
+        -------
+        SyntheticCustomDataset
+            Dataset with 50 samples.
+        """
+        return SyntheticCustomDataset(num_samples=50)
+
+    @pytest.fixture(scope="class")
+    def prep_mmap(self, source_dataset, temp_dir_class):
+        """Shared mmap preprocessor (LZ4 compression).
+        
+        Returns
+        -------
+        OnDiskInductivePreprocessor
+            Preprocessor with mmap storage and LZ4 compression.
+        """
+        return OnDiskInductivePreprocessor(
+            dataset=source_dataset,
+            data_dir=temp_dir_class / "mmap",
+            storage_backend="mmap",
+            compression="lz4",
+            cache_size=0,
+        )
+
+    @pytest.fixture(scope="class")
+    def prep_files(self, source_dataset, temp_dir_class):
+        """Shared file-based preprocessor.
+        
+        Returns
+        -------
+        OnDiskInductivePreprocessor
+            Preprocessor with file-based storage.
+        """
+        return OnDiskInductivePreprocessor(
+            dataset=source_dataset,
+            data_dir=temp_dir_class / "files",
+            storage_backend="files",
+            cache_size=0,
+        )
+
+    @pytest.fixture(scope="class")
+    def prep_nocomp(self, source_dataset, temp_dir_class):
+        """Shared mmap preprocessor without compression.
+        
+        Returns
+        -------
+        OnDiskInductivePreprocessor
+            Preprocessor with mmap storage, no compression.
+        """
+        return OnDiskInductivePreprocessor(
+            dataset=source_dataset,
+            data_dir=temp_dir_class / "nocomp",
+            storage_backend="mmap",
+            compression=None,
+            cache_size=0,
+        )
+
+    @pytest.fixture(scope="class")
+    def prep_zstd(self, source_dataset, temp_dir_class):
+        """Shared mmap preprocessor with ZSTD compression.
+        
+        Returns
+        -------
+        OnDiskInductivePreprocessor
+            Preprocessor with mmap storage and ZSTD compression.
+        """
+        return OnDiskInductivePreprocessor(
+            dataset=source_dataset,
+            data_dir=temp_dir_class / "zstd",
+            storage_backend="mmap",
+            compression="zstd",
+            cache_size=0,
+        )
+
+    def test_mmap_storage_files_created(self, prep_mmap):
+        """Verify mmap storage creates correct file structure."""
+        # Verify mmap files exist
+        assert (prep_mmap.processed_dir / "samples.mmap").exists()
+        assert (prep_mmap.processed_dir / "samples.idx.npy").exists()
+        assert prep_mmap._storage is not None
+        assert prep_mmap.storage_backend == "mmap"
+        
+        # Verify we can read samples
+        sample = prep_mmap[0]
+        assert hasattr(sample, "x") and hasattr(sample, "edge_index")
+        
+        # Verify storage stats
+        stats = prep_mmap._storage.get_stats()
+        assert stats["num_samples"] == 50
+        assert stats["compression"] == "lz4"
+        assert stats["compression_ratio"] > 1.0
+
+    def test_mmap_vs_files_io_speedup(self):
+        """Prove mmap storage provides I/O speedup over individual files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            num_samples = 50
+            num_accesses = 100
+            
+            source = SyntheticCustomDataset(num_samples=num_samples)
+            
+            # Benchmark file-based storage
+            prep_files = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir / "files",
+                storage_backend="files",
+                cache_size=0,
             )
             
-            print(f"✅ SUPERIORITY CONFIRMED: {superiority_factor:.2f}× faster than PyG's approach!")
+            start = time.time()
+            for i in range(num_accesses):
+                _ = prep_files[i % num_samples]
+            time_files = time.time() - start
+            
+            # Benchmark mmap storage
+            prep_mmap = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir / "mmap",
+                storage_backend="mmap",
+                compression="lz4",
+                cache_size=0,
+            )
+            
+            start = time.time()
+            for i in range(num_accesses):
+                _ = prep_mmap[i % num_samples]
+            time_mmap = time.time() - start
+            
+            speedup = time_files / time_mmap
+            
+            # Verify correctness
+            assert torch.equal(prep_files[0].x, prep_mmap[0].x)
+            
+            # Assert speedup (conservative threshold for CI)
+            assert speedup > 1.1, f"Mmap speedup {speedup:.2f}× should be >1.1×"
+
+    def test_compression_reduces_disk_usage(
+        self, prep_nocomp, prep_mmap, prep_zstd
+    ):
+        """Prove compression significantly reduces disk usage."""
+        # Get storage stats
+        size_nocomp = prep_nocomp._storage.get_stats()["total_size_mb"]
+        
+        stats_lz4 = prep_mmap._storage.get_stats()
+        size_lz4 = stats_lz4["total_size_mb"]
+        ratio_lz4 = stats_lz4["compression_ratio"]
+        
+        stats_zstd = prep_zstd._storage.get_stats()
+        ratio_zstd = stats_zstd["compression_ratio"]
+        
+        # Verify correctness
+        assert torch.equal(prep_nocomp[0].x, prep_mmap[0].x)
+        assert torch.equal(prep_nocomp[0].x, prep_zstd[0].x)
+        
+        # Assert compression effectiveness
+        assert ratio_lz4 > 1.1, f"LZ4 ratio {ratio_lz4:.2f}× should be >1.1×"
+        assert ratio_zstd > ratio_lz4, f"ZSTD {ratio_zstd:.2f}× should beat LZ4 {ratio_lz4:.2f}×"
+        assert size_lz4 < size_nocomp, "LZ4 should use less disk space"
+
+    def test_mmap_cache_integration(self, source_dataset, temp_dir_class):
+        """Verify mmap storage and LRU cache work together correctly."""
+        cache_size = 10
+        
+        # Need separate preprocessor with cache enabled
+        preprocessor = OnDiskInductivePreprocessor(
+            dataset=source_dataset,
+            data_dir=temp_dir_class / "cached",
+            storage_backend="mmap",
+            compression="lz4",
+            cache_size=cache_size,
+        )
+        
+        # First access: cache miss, mmap load
+        _ = preprocessor[0]
+        stats1 = preprocessor.get_cache_stats()
+        assert stats1["misses"] == 1
+        assert preprocessor._storage is not None
+        
+        # Second access: cache hit
+        _ = preprocessor[0]
+        stats2 = preprocessor.get_cache_stats()
+        assert stats2["hits"] == 1
+        
+        # Fill cache
+        for i in range(cache_size):
+            _ = preprocessor[i]
+        
+        # Access all cached samples (should all hit)
+        start_hits = preprocessor.get_cache_stats()["hits"]
+        for i in range(cache_size):
+            _ = preprocessor[i]
+        final_stats = preprocessor.get_cache_stats()
+        
+        new_hits = final_stats["hits"] - start_hits
+        assert new_hits == cache_size, f"Expected {cache_size} hits, got {new_hits}"
+        assert final_stats["hit_rate"] > 0.5, "Hit rate should be >50% with repeated access"
