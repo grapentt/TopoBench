@@ -22,6 +22,11 @@ from omegaconf import DictConfig
 from torch_geometric.data import Data, InMemoryDataset, OnDiskDataset
 from torch_geometric.datasets import TUDataset
 
+from torch_geometric.transforms import BaseTransform
+
+from topobench.data.preprocessor._ondisk.transform_pipeline import (
+    TransformPipeline,
+)
 from topobench.data.preprocessor.ondisk_inductive import (
     OnDiskInductivePreprocessor,
 )
@@ -377,6 +382,7 @@ class TestOnDiskInductivePreprocessor:
                 dataset=source,
                 data_dir=data_dir,
                 transforms_config=None,
+                storage_backend="files",  # Use files for this test
             )
             
             # Get modification time
@@ -388,6 +394,7 @@ class TestOnDiskInductivePreprocessor:
                 dataset=source,
                 data_dir=data_dir,
                 transforms_config=None,
+                storage_backend="files",  # Use files for this test
             )
             sample_path2 = dataset2._get_sample_path(0)  # Get from dataset2
             mtime2 = sample_path2.stat().st_mtime
@@ -406,6 +413,7 @@ class TestOnDiskInductivePreprocessor:
                 data_dir=data_dir,
                 transforms_config=None,
                 force_reload=True,
+                storage_backend="files",  # Use files for this test
             )
             
             # Verify data is restored after reload
@@ -510,6 +518,7 @@ class TestOnDiskInductivePreprocessor:
                 dataset=source,
                 data_dir=data_dir,
                 transforms_config=None,
+                storage_backend="files",  # Use files for this test
             )
             
             # Verify processed directory exists
@@ -918,3 +927,114 @@ class TestMemoryMappedStorageIntegration:
         new_hits = final_stats["hits"] - start_hits
         assert new_hits == cache_size, f"Expected {cache_size} hits, got {new_hits}"
         assert final_stats["hit_rate"] > 0.5, "Hit rate should be >50% with repeated access"
+
+    def test_two_tier_auto_classification(self):
+        """Two-tier auto mode should separate heavy and light transforms."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            source = create_inmemory_dataset(num_samples=10)
+            
+            # Mock transforms
+            class MockLifting(BaseTransform):
+                __module__ = "topobench.transforms.liftings"
+                def forward(self, data):
+                    data.lifted = True
+                    return data
+            
+            class MockNorm(BaseTransform):
+                __module__ = "topobench.transforms.data_manipulations"
+                def forward(self, data):
+                    data.normalized = True
+                    return data
+            
+            # Create preprocessor with auto classification
+            dataset = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir,
+                transforms_config=None,
+                transform_tier="auto",
+                storage_backend="files"
+            )
+            
+            # Manually add pipeline for testing
+            transforms = [MockLifting(), MockNorm()]
+            dataset.transform_pipeline = TransformPipeline(transforms, transform_tier="auto")
+            
+            # Verify classification
+            assert len(dataset.transform_pipeline.heavy_transforms) == 1
+            assert len(dataset.transform_pipeline.light_transforms) == 1
+            assert isinstance(dataset.transform_pipeline.heavy_transforms[0], MockLifting)
+            assert isinstance(dataset.transform_pipeline.light_transforms[0], MockNorm)
+    
+    def test_two_tier_cache_reuse_on_light_changes(self):
+        """Changing light transforms should reuse cache (same cache key).
+        
+        Two-tier system separates transforms into:
+        - Heavy transforms (e.g., topological liftings): Expensive, applied offline,
+          results cached to disk, parameters included in cache key
+        - Light transforms (e.g., augmentations): Cheap, applied at runtime,
+          NOT cached, parameters NOT in cache key
+        
+        Real-world usage example:
+        >>> # Preprocess once with expensive lifting (20 min)
+        >>> dataset = OnDiskInductivePreprocessor(
+        ...     dataset=raw_data,
+        ...     transforms_config={
+        ...         "lifting": SimplicialCliqueLifting(),  # Heavy: cached
+        ...         "augmentation": RandomRotation(angle=15)  # Light: runtime
+        ...     },
+        ...     transform_tier="auto"
+        ... )
+        >>>
+        >>> # Try 100 different rotation angles (INSTANT - no reprocessing!)
+        >>> for angle in range(0, 180, 2):
+        ...     dataset.transform_pipeline.light_transforms[0] = RandomRotation(angle=angle)
+        ...     # Train model with this augmentation...
+        ...     # Lifting cache is REUSED because only light transform changed!
+        >>>
+        >>> # Result: Much faster experimentation!
+        
+        This test verifies that the cache key behavior works.
+        """
+        # Mock transforms with parameters
+        class MockLifting(BaseTransform):
+            __module__ = "topobench.transforms.liftings"
+            def __init__(self, dim=2):
+                super().__init__()
+                self.parameters = {"dim": dim}
+            def forward(self, data):
+                return data
+        
+        class MockAugment(BaseTransform):
+            __module__ = "topobench.transforms.data_manipulations"
+            def __init__(self, angle=15):
+                super().__init__()
+                self.parameters = {"angle": angle}
+            def forward(self, data):
+                return data
+        
+        # Create pipeline manually to test cache key
+        # Pipeline 1: dim=2, angle=15
+        pipeline1 = TransformPipeline(
+            [MockLifting(dim=2), MockAugment(angle=15)],
+            transform_tier="auto"
+        )
+        key1 = pipeline1.compute_cache_key()
+        
+        # Pipeline 2: dim=2, angle=90 (LIGHT CHANGED - augmentation parameter)
+        pipeline2 = TransformPipeline(
+            [MockLifting(dim=2), MockAugment(angle=90)],
+            transform_tier="auto"
+        )
+        key2 = pipeline2.compute_cache_key()
+        
+        # Pipeline 3: dim=3, angle=15 (HEAVY CHANGED - lifting parameter)
+        pipeline3 = TransformPipeline(
+            [MockLifting(dim=3), MockAugment(angle=15)],
+            transform_tier="auto"
+        )
+        key3 = pipeline3.compute_cache_key()
+        
+        # Verify cache key behavior
+        assert key1 == key2, "Light change should reuse cache (same key)"
+        assert key1 != key3, "Heavy change should use new cache (different key)"

@@ -23,6 +23,9 @@ from topobench.data.preprocessor._ondisk.parallel_processor import (
 from topobench.data.preprocessor._ondisk.storage_backend import (
     MemoryMappedStorage,
 )
+from topobench.data.preprocessor._ondisk.transform_pipeline import (
+    TransformPipeline,
+)
 from topobench.data.utils import (
     ensure_serializable,
     load_inductive_splits,
@@ -94,11 +97,15 @@ class OnDiskInductivePreprocessor(Dataset):
         - "mmap": Memory-mapped storage (2-3× faster I/O, compression support)
         - "files": Individual .pt files (backward compatible)
     compression : str, optional
-        Compression algorithm: "lz4", "zstd", or None (default: "lz4").
-        Only used with storage_backend="mmap".
-        - "lz4": Fast, 1.3× compression ratio, best for training
-        - "zstd": Slower, 1.7× compression ratio, best for storage
-        - None: No compression (fastest writes, largest disk usage)
+        Compression algorithm for mmap storage. Options: None, "lz4" (fast),
+        "zstd" (better ratio). Default: "lz4" (2-3× speedup, 1.5-2× space savings).
+    transform_tier : str, optional
+        Classification mode for two-tier transforms. Options: "all_heavy" (default,
+        backward compatible), "auto" (automatic heavy/light separation), "all_light"
+        (all runtime), "manual" (use tier_override). Default: "all_heavy".
+    tier_override : dict, optional
+        Manual classification overrides for transforms. Maps transform class names
+        to "heavy" or "light". Only used when transform_tier="manual". Default: None.
     **kwargs : dict
         Additional arguments passed to parent Dataset class.
 
@@ -158,6 +165,8 @@ class OnDiskInductivePreprocessor(Dataset):
         cache_size: int = 100,
         storage_backend: str = "mmap",
         compression: str | None = "lz4",
+        transform_tier: str = "all_heavy",
+        tier_override: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize OnDiskInductiveDataset.
@@ -182,6 +191,15 @@ class OnDiskInductivePreprocessor(Dataset):
             Storage backend: "mmap" or "files" (default: "mmap").
         compression : str, optional
             Compression: "lz4", "zstd", or None (default: "lz4").
+        transform_tier : str, optional
+            Transform classification mode (default: "all_heavy").
+            - "all_heavy": All transforms processed offline (current behavior)
+            - "auto": Automatic classification into heavy/light
+            - "all_light": All transforms applied at runtime
+            - "manual": Use tier_override for classification
+        tier_override : dict, optional
+            Manual transform classification overrides (default: None).
+            Maps transform class names to "heavy" or "light".
         **kwargs : dict
             Additional arguments passed to parent Dataset class.
         """
@@ -195,6 +213,8 @@ class OnDiskInductivePreprocessor(Dataset):
         self.cache_size = cache_size
         self.storage_backend = storage_backend
         self.compression = compression
+        self.transform_tier = transform_tier
+        self.tier_override = tier_override
 
         # Initialize in-memory LRU cache for training speedup (1.2-1.3×)
         # OrderedDict provides O(1) access, insertion, and deletion
@@ -216,17 +236,20 @@ class OnDiskInductivePreprocessor(Dataset):
             self.pre_transform = self._instantiate_pre_transform(
                 transforms_config
             )
+            # Create two-tier transform pipeline
+            self._create_transform_pipeline()
             self._set_processed_data_dir(transforms_config)
         else:
             # No transforms - use data as-is
             self.pre_transform = None
+            self.transform_pipeline = None
             self.processed_dir = self.data_dir / "no_transforms"
 
         # Ensure processed directory exists
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load or create metadata
-        self.metadata_path = self.processed_dir / "metadata.json"
+        # Load or create metadata (use dataset_metadata to avoid conflict with storage)
+        self.metadata_path = self.processed_dir / "dataset_metadata.json"
         if self._should_process():
             self._process_samples()
         else:
@@ -326,6 +349,14 @@ class OnDiskInductivePreprocessor(Dataset):
             # Load sample from disk
             # PyTorch 2.6+ requires weights_only=False for PyG Data objects
             data = torch.load(sample_path, weights_only=False)
+
+        # Apply light transforms at runtime (two-tier system)
+        if (
+            hasattr(self, "transform_pipeline")
+            and self.transform_pipeline is not None
+            and self.transform_pipeline.light_compose is not None
+        ):
+            data = self.transform_pipeline.apply_light(data)
 
         # Add to cache if enabled
         if self.cache_size > 0:
@@ -475,11 +506,47 @@ class OnDiskInductivePreprocessor(Dataset):
             list(pre_transforms_dict.values())
         )
 
+    def _create_transform_pipeline(self) -> None:
+        """Create two-tier transform pipeline from pre_transform.
+
+        Separates transforms into heavy (offline) and light (runtime) tiers
+        based on transform_tier setting. Updates self.pre_transform to use
+        only heavy transforms for preprocessing.
+        """
+        if self.pre_transform is None:
+            self.transform_pipeline = None
+            return
+
+        # Extract transforms from Compose object
+        if hasattr(self.pre_transform, "transforms"):
+            transforms = self.pre_transform.transforms
+        else:
+            # Single transform, wrap in list
+            transforms = [self.pre_transform]
+
+        # Create pipeline with tier classification
+        self.transform_pipeline = TransformPipeline(
+            transforms=transforms,
+            transform_tier=self.transform_tier,
+            tier_override=self.tier_override,
+        )
+
+        # Update pre_transform to use only heavy transforms
+        # This ensures preprocessing only applies heavy transforms
+        if self.transform_pipeline.heavy_compose is not None:
+            self.pre_transform = self.transform_pipeline.heavy_compose
+        else:
+            # No heavy transforms, set to None
+            self.pre_transform = None
+
     def _set_processed_data_dir(self, transforms_config: DictConfig) -> None:
         """Set processed data directory based on transform parameters.
 
         Creates a unique directory path using parameter hashing to enable
         caching of preprocessed data across runs with identical configurations.
+
+        For two-tier mode, only heavy transforms affect the cache key,
+        allowing light transform changes without reprocessing.
 
         Parameters
         ----------
@@ -490,7 +557,12 @@ class OnDiskInductivePreprocessor(Dataset):
         repo_name = "_".join(list(transforms_config.keys()))
 
         # Hash transform parameters for unique cache directory
-        params_hash = make_hash(self.transforms_parameters)
+        # Two-tier: Use pipeline cache key (heavy transforms only)
+        if hasattr(self, "transform_pipeline") and self.transform_pipeline:
+            params_hash = self.transform_pipeline.compute_cache_key()
+        else:
+            # Fallback for no pipeline
+            params_hash = make_hash(self.transforms_parameters)
 
         # Set processed directory path
         self.processed_dir = self.data_dir / repo_name / f"{params_hash}"
@@ -519,15 +591,30 @@ class OnDiskInductivePreprocessor(Dataset):
             self.metadata_path.unlink()
 
     def _save_metadata(self) -> None:
-        """Save dataset metadata to disk."""
+        """Save dataset metadata to disk with transform tier info."""
         metadata = {
             "num_samples": self.num_samples,
             "source_dataset": str(type(self.dataset).__name__),
             "processed_dir": str(self.processed_dir),
         }
 
-        # Add transform parameters if applicable
-        if self.transforms_config is not None:
+        # Add transform tier information
+        if hasattr(self, "transform_pipeline") and self.transform_pipeline:
+            summary = self.transform_pipeline.get_summary()
+            metadata["transform_tier"] = self.transform_tier
+            metadata["heavy_transforms"] = summary["heavy_names"]
+            metadata["light_transforms"] = summary["light_names"]
+
+            # Only save heavy parameters for cache validation
+            heavy_params = {}
+            for t in self.transform_pipeline.heavy_transforms:
+                if hasattr(t, "parameters"):
+                    heavy_params[t.__class__.__name__] = t.parameters
+            metadata["transforms_parameters"] = ensure_serializable(
+                heavy_params
+            )
+        elif self.transforms_config is not None:
+            # Fallback for no pipeline (shouldn't happen but safe)
             metadata["transforms_parameters"] = self.transforms_parameters
 
         with open(self.metadata_path, "w") as f:
@@ -664,7 +751,7 @@ class OnDiskInductivePreprocessor(Dataset):
             # Storage files don't exist, will use file-based fallback
             self._storage = None
 
-    def Le_convert_to_mmap_storage(self) -> None:
+    def _convert_to_mmap_storage(self) -> None:
         """Convert individual .pt files to memory-mapped storage.
 
         This consolidates individual sample files into a single mmap file
