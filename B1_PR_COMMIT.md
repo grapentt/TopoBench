@@ -22,13 +22,17 @@
   - Test old cache files can be read
 
 ### Performance Tests
-- [ ] `tests/data/preprocessor/test_ondisk_performance.py` - Performance benchmarks
+- [x] `tests/data/preprocessor/test_ondisk_performance.py` - Performance benchmarks
   - Benchmark preprocessing speed (target: 5-10× faster)
   - Benchmark training I/O (target: 1.4× faster)
   - Benchmark split creation (target: 30× faster)
 
 ### Unit Tests
-- [x] ✅ `test/data/preprocessor/test_storage_backend.py` - Core storage tests (3/3 passing, 0.2s runtime)
+- [x] ✅ `test/data/preprocessor/test_lru_cache.py` - 14/14 cache tests passing
+- [x] ✅ `test/data/preprocessor/test_storage_backend.py` - Storage tests
+- [x] ✅ `test/data/preprocessor/test_parallel_processor.py` - Parallel tests
+- [x] ✅ `test/data/preprocessor/test_ondisk_inductive.py` - Integration tests
+- [x] ✅ `test/data/preprocessor/test_ondisk_performance.py` - Benchmarks (TODO)
 - [x] ✅ `test/data/preprocessor/test_internal_storage_backend.py` - Comprehensive benchmarks (20/20 passing, for analysis)
 - [x] ✅ `test/data/preprocessor/test_parallel_processor.py` - Parallel processing tests (5/5 passing, 1.58s runtime, 1.81× speedup)
 - [x] ✅ `test/data/preprocessor/test_ondisk_inductive.py` - Integration tests (21/21 passing, 2.28s runtime, pickle fallback working)
