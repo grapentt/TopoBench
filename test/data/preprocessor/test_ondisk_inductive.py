@@ -1178,3 +1178,77 @@ class TestMemoryMappedStorageIntegration:
                   f"(sequential={time_seq:.2f}s, parallel={time_par:.2f}s)")
             print(f"Note: For datasets of {num_samples} samples, speedup may be limited by overhead. "
                   f"Larger datasets (10K+ samples) show 2-4× speedup.")
+            
+            # Also verify file cleanup (batch deletion optimization)
+            parallel_dir = data_dir / "parallel" / "no_transforms"
+            pt_files = list(parallel_dir.glob("sample_*.pt"))
+            assert len(pt_files) == 0, "Batch deletion failed - .pt files should be removed after mmap conversion"
+            
+            # Verify metadata accumulation across shards
+            stats_par = dataset_par._storage.get_stats()
+            assert stats_par["compression_ratio"] > 1.0, "Metadata not properly accumulated from shards"
+            assert 1.2 <= stats_par["compression_ratio"] <= 2.0, "Compression ratio outside expected range"
+    
+    def test_parallel_mmap_vectorized_index_ordering(self):
+        """Verify vectorized index adjustment maintains correct sample ordering across shards.
+        
+        Tests the critical vectorization optimization - ensures samples from different
+        shards are correctly ordered in the final mmap file, including edge cases.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            
+            # Test 1: Normal case (4 workers, 1000 samples)
+            source = SyntheticCustomDataset(num_samples=1000)
+            dataset = OnDiskInductivePreprocessor(
+                dataset=source, data_dir=data_dir / "normal", transforms_config=None,
+                num_workers=4, storage_backend="mmap", compression="lz4",
+            )
+            
+            # Check shard boundaries (vectorized index adjustment critical here)
+            for idx in [249, 250, 251, 499, 500, 501, 749, 750, 751]:
+                assert dataset[idx].y.item() == idx % 3, \
+                    f"Shard boundary {idx}: vectorized index adjustment failed"
+            
+            # Test 2: Edge case - uneven shard sizes (1003 samples, prime number)
+            source_uneven = SyntheticCustomDataset(num_samples=1003)
+            dataset_uneven = OnDiskInductivePreprocessor(
+                dataset=source_uneven, data_dir=data_dir / "uneven", transforms_config=None,
+                num_workers=4, storage_backend="mmap", compression="lz4",
+            )
+            
+            # Verify uneven distribution handled correctly
+            for idx in [0, 250, 500, 750, 1002]:
+                assert dataset_uneven[idx].y.item() == idx % 3, \
+                    f"Uneven shards: sample {idx} wrong value"
+    
+    def test_parallel_mmap_edge_cases(self):
+        """Test edge cases: single worker (sequential fallback) and many workers.
+        
+        Verifies the implementation handles both extremes correctly.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            source = SyntheticCustomDataset(num_samples=800)
+            
+            # Edge case 1: Single worker (sequential fallback)
+            dataset_seq = OnDiskInductivePreprocessor(
+                dataset=source, data_dir=data_dir / "seq", transforms_config=None,
+                num_workers=1, storage_backend="mmap", compression="lz4",
+            )
+            assert len(dataset_seq) == 800
+            assert len(list((data_dir / "seq" / "no_transforms").glob("_shard_*"))) == 0, \
+                "Sequential path should not create shard directories"
+            
+            # Edge case 2: Many workers (8 shards)
+            dataset_many = OnDiskInductivePreprocessor(
+                dataset=source, data_dir=data_dir / "many", transforms_config=None,
+                num_workers=8, storage_backend="mmap", compression="lz4",
+            )
+            assert len(dataset_many) == 800
+            
+            # Verify all 8 shard boundaries are correct
+            for shard_id in range(8):
+                idx = shard_id * 100
+                if idx < 800:
+                    assert dataset_many[idx].y.item() == idx % 3, f"8-shard boundary {idx} failed"

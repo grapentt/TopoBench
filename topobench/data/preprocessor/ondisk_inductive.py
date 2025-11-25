@@ -12,7 +12,10 @@ from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
-
+import os
+import platform
+import shutil
+import numpy as np
 import torch
 import torch_geometric
 from omegaconf import DictConfig
@@ -77,6 +80,7 @@ def _convert_shard_to_mmap(
     
     success_count = 0
     error_count = 0
+    files_to_delete = []  # Batch deletions for better I/O performance
     
     for idx in range(start_idx, end_idx):
         sample_path = processed_dir / f"sample_{idx:06d}.pt"
@@ -85,14 +89,21 @@ def _convert_shard_to_mmap(
             try:
                 data = torch.load(sample_path, weights_only=False)
                 storage.append(data)
-                # Delete individual file to save space
-                sample_path.unlink()
+                # Mark for deletion (batch delete later)
+                files_to_delete.append(sample_path)
                 success_count += 1
             except Exception as e:
                 error_count += 1
                 print(f"Warning: Failed to convert sample {idx}: {e}")
         else:
             error_count += 1
+    
+    # Batch delete files for better I/O performance
+    for file_path in files_to_delete:
+        try:
+            file_path.unlink()
+        except OSError:
+            pass  # File might have been deleted already
     
     # Close storage to flush writes
     storage.close()
@@ -872,15 +883,31 @@ class OnDiskInductivePreprocessor(Dataset):
             
             # Wait for all shards to complete
             results = []
+            total_errors = 0
             for future in as_completed(futures):
                 shard_id = futures[future]
                 try:
                     result = future.result()
                     results.append(result)
-                    print(f"  ✓ Shard {result['shard_id']}: "
-                          f"{result['success']}/{result['num_samples']} samples")
+                    total_errors += result['errors']
+                    if result['errors'] > 0:
+                        print(f"    ⚠️  Warning: {result['errors']} samples failed in this shard")
                 except Exception as e:
                     print(f"  ✗ Shard {shard_id} failed: {e}")
+                    raise RuntimeError(f"Shard {shard_id} conversion failed: {e}") from e
+        
+        # Check if any samples failed
+        total_samples = sum(r['num_samples'] for r in results)
+        
+        if total_errors > 0:
+            failure_rate = total_errors / total_samples if total_samples > 0 else 0
+            raise RuntimeError(
+                f"Sample conversion failed during mmap storage creation: "
+                f"{total_errors}/{total_samples} samples failed ({failure_rate*100:.2f}%).\n"
+                f"All samples must convert successfully to maintain dataset integrity.\n"
+                f"Possible causes: corrupted .pt files, disk I/O errors, insufficient disk space.\n"
+                f"Check the error messages above for details."
+            )
         
         # Merge shards into final mmap file
         print("  Merging shards into final storage...")
@@ -926,38 +953,94 @@ class OnDiskInductivePreprocessor(Dataset):
         )
     
     def _merge_shards(self, num_shards: int) -> None:
-        """Merge shard mmap files into final consolidated mmap file.
-        
+        """Merge shard mmap files into final consolidated mmap file using binary concatenation.
+ 
         Parameters
         ----------
         num_shards : int
             Number of shards to merge.
         """
-        # Create final storage
-        self._storage = MemoryMappedStorage(
-            data_dir=self.processed_dir,
-            compression=self.compression,
-            readonly=False,
-        )
+        final_mmap_path = self.processed_dir / "samples.mmap"
+        final_index_path = self.processed_dir / "samples.idx.npy"
+        final_metadata_path = self.processed_dir / "metadata.json"
         
-        # Read and append samples from each shard in order
+        # Pre-load all shard metadata and indices for vectorized operations
+        shard_indices = []
+        shard_sizes = []
+        shard_metadata_list = []
+        total_samples = 0
+        
         for shard_id in range(num_shards):
             shard_dir = self.processed_dir / f"_shard_{shard_id}"
+            shard_mmap_path = shard_dir / "samples.mmap"
+            shard_index_path = shard_dir / "samples.idx.npy"
+            shard_metadata_path = shard_dir / "metadata.json"
             
-            # Open shard storage in readonly mode
-            shard_storage = MemoryMappedStorage(
-                data_dir=shard_dir,
-                compression=self.compression,
-                readonly=True,
-            )
+            # Load shard index and metadata
+            shard_index = np.load(shard_index_path, allow_pickle=False)
+            with open(shard_metadata_path, 'r') as f:
+                shard_metadata = json.load(f)
             
-            # Copy all samples from shard to final storage
-            for idx in range(len(shard_storage)):
-                data = shard_storage[idx]
-                self._storage.append(data)
+            shard_indices.append(shard_index)
+            shard_sizes.append(shard_mmap_path.stat().st_size)
+            shard_metadata_list.append(shard_metadata)
+            total_samples += len(shard_index)
         
-        # Close final storage to flush writes and save index
-        self._storage.close()
+        # Vectorized: Compute cumulative offsets for all shards
+        cumulative_offsets = np.concatenate(([0], np.cumsum(shard_sizes[:-1])))
+        
+        # Concatenate mmap files using optimized OS-specific methods
+        with open(final_mmap_path, 'wb') as final_mmap:
+            for shard_id in range(num_shards):
+                shard_dir = self.processed_dir / f"_shard_{shard_id}"
+                shard_mmap_path = shard_dir / "samples.mmap"
+                
+                # Use sendfile on Linux for zero-copy transfer (much faster!)
+                if platform.system() == 'Linux' and hasattr(os, 'sendfile'):
+                    with open(shard_mmap_path, 'rb') as shard_mmap:
+                        offset = 0
+                        file_size = shard_sizes[shard_id]
+                        while offset < file_size:
+                            # sendfile: zero-copy kernel-level transfer
+                            sent = os.sendfile(final_mmap.fileno(), shard_mmap.fileno(), offset, file_size - offset)
+                            offset += sent
+                else:
+                    # Fallback: buffered copy with 4MB chunks (still fast)
+                    with open(shard_mmap_path, 'rb') as shard_mmap:
+                        shutil.copyfileobj(shard_mmap, final_mmap, length=4*1024*1024)
+        
+        # Vectorized: Adjust all indices at once using NumPy broadcasting
+        final_index = np.empty((total_samples, 2), dtype=np.int64)
+        current_pos = 0
+        for shard_id, (shard_index, offset) in enumerate(zip(shard_indices, cumulative_offsets)):
+            num_shard_samples = len(shard_index)
+            # Vectorized offset adjustment
+            final_index[current_pos:current_pos + num_shard_samples, 0] = shard_index[:, 0] + offset
+            final_index[current_pos:current_pos + num_shard_samples, 1] = shard_index[:, 1]
+            current_pos += num_shard_samples
+        
+        # Save final index
+        np.save(final_index_path, final_index, allow_pickle=False)
+        
+        # Vectorized: Sum stats using NumPy
+        total_uncompressed = sum(m.get("total_uncompressed_bytes", 0) for m in shard_metadata_list)
+        total_compressed = sum(m.get("total_compressed_bytes", 0) for m in shard_metadata_list)
+        
+        # Save final metadata as JSON
+        metadata = {
+            "compression": self.compression,
+            "num_samples": len(final_index),
+            "total_uncompressed_bytes": total_uncompressed,
+            "total_compressed_bytes": total_compressed,
+            "compression_ratio": (
+                total_uncompressed / total_compressed
+                if total_compressed > 0
+                else 1.0
+            ),
+        }
+        
+        with open(final_metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
         
         # Reopen in readonly mode for subsequent reads
         self._storage = MemoryMappedStorage(
