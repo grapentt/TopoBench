@@ -191,20 +191,22 @@ def assign_train_val_test_mask_to_graphs(dataset, split_idx, use_lazy=False):
         Dictionary containing the train, validation, and test indices.
     use_lazy : bool, optional
         Use lazy subsets for O(1) memory (default: False for backward compatibility).
+        When True, returns LazyDataloadDataset objects compatible with TBDataloader.
 
     Returns
     -------
     tuple:
         Tuple containing the train, validation, and test datasets.
+        When use_lazy=True, returns LazyDataloadDataset objects.
+        When use_lazy=False, returns DataloadDataset objects (in-memory).
     """
     if use_lazy:
-        # Use lazy splits for O(1) memory usage
-        from topobench.data.datasets import LazySubset
+        # Use lazy splits for O(1) memory usage with TBDataloader compatibility
 
         return (
-            LazySubset(dataset, split_idx["train"]),
-            LazySubset(dataset, split_idx["valid"]),
-            LazySubset(dataset, split_idx["test"]),
+            LazyDataloadDataset(dataset, split_idx["train"]),
+            LazyDataloadDataset(dataset, split_idx["valid"]),
+            LazyDataloadDataset(dataset, split_idx["test"]),
         )
 
     # Traditional approach: load all samples and assign masks

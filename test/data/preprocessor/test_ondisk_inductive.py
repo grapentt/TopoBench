@@ -14,10 +14,10 @@ import json
 import tempfile
 import time
 from pathlib import Path
-
 import psutil
 import pytest
 import torch
+from topobench.data.datasets import LazyDataloadDataset
 from omegaconf import DictConfig
 from torch_geometric.data import Data, InMemoryDataset, OnDiskDataset
 from torch_geometric.datasets import TUDataset
@@ -513,6 +513,69 @@ class TestOnDiskInductivePreprocessor:
             # Test missing learning_setting raises error
             with pytest.raises(ValueError):
                 dataset.load_dataset_splits(DictConfig({}))
+    
+    def test_splits_collate_fn_compatibility(self, dataset_type):
+        """Test that split datasets work with collate_fn.
+        
+        Parameters
+        ----------
+        dataset_type : str
+            Type of dataset to test ('inmemory', 'ondisk', 'custom').
+        """
+        from topobench.dataloader.utils import collate_fn
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            source = create_source_dataset(dataset_type, num_samples=20, tmpdir=Path(tmpdir))
+            
+            dataset = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir,
+                transforms_config=None,
+                storage_backend="files",  # Faster for small test
+            )
+            
+            # Load splits
+            split_params = DictConfig({
+                "learning_setting": "inductive",
+                "split_type": "random",
+                "data_seed": 42,
+                "train_prop": 0.6,
+                "data_split_dir": str(data_dir / "splits"),
+            })
+            
+            train_ds, _val_ds, _test_ds = dataset.load_dataset_splits(split_params)
+            
+            # Test that split datasets are LazyDataloadDataset
+            assert isinstance(train_ds, LazyDataloadDataset), (
+                f"Expected LazyDataloadDataset, got {type(train_ds).__name__}"
+            )
+            
+            # Test get() returns tuple format
+            sample = train_ds.get(0)
+            assert isinstance(sample, tuple), f"Expected tuple, got {type(sample)}"
+            assert len(sample) == 2, f"Expected 2-element tuple, got {len(sample)}"
+            
+            values, keys = sample
+            assert isinstance(values, list), f"Expected values list, got {type(values)}"
+            assert isinstance(keys, list), f"Expected keys list, got {type(keys)}"
+            
+            # Test __getitem__ also returns tuple (via get())
+            item = train_ds[0]
+            assert isinstance(item, tuple), f"__getitem__ should return tuple, got {type(item)}"
+            
+            # Test collate_fn works with batch from split dataset
+            # This is the critical test - collate_fn was failing before the fix
+            batch = [train_ds[i] for i in range(min(3, len(train_ds)))]
+            
+            # This should not raise TypeError about 'Data' object not being subscriptable
+            batched = collate_fn(batch)
+            
+            # Verify batched result is valid
+            assert hasattr(batched, 'batch_0'), "Batched data should have batch_0 attribute"
+            assert batched.batch_0.max().item() + 1 == len(batch), (
+                f"Batch size mismatch: expected {len(batch)}, got {batched.batch_0.max().item() + 1}"
+            )
     
     
     def test_file_structure_creation(self):
