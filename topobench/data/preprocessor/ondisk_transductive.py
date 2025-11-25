@@ -4,6 +4,7 @@ This module provides memory-efficient transductive learning on large graphs
 by indexing topological structures offline and querying them during training.
 """
 
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +21,8 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
 
     This preprocessor provides efficient structure detection, indexing, and on-demand
     querying for large-scale transductive graph learning without loading all
-    structures into memory. It builds an index of topological structures (e.g.,
-    triangles, cliques) that can be queried during mini-batch training.
+    structures into memory. It builds an index of topological structures once and
+    can be queried during mini-batch training.
 
     Parameters
     ----------
@@ -55,38 +56,20 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
     >>> from torch_geometric.datasets import Planetoid
     >>> from topobench.data.preprocessor import OnDiskTransductiveDataset
     >>>
-    >>> # Load Cora dataset
-    >>> dataset = Planetoid(root='/tmp/Cora', name='Cora')
-    >>> data = dataset[0]
-    >>>
-    >>> # Create transductive dataset
-    >>> trans_dataset = OnDiskTransductiveDataset(
+    >>> # Recommended: Use as context manager for automatic cleanup
+    >>> with OnDiskTransductiveDataset(
     ...     graph_data=data,
-    ...     data_dir="/tmp/cora_index",
+    ...     data_dir=data_set_dir,
     ...     max_structure_size=3
-    ... )
+    ... ) as preprocessor:
+    ...     preprocessor.build_index()
+    ...     structures = preprocessor.query_batch([0, 1, 2, 3, 4])
     >>>
-    >>> # Build index (one-time operation)
-    >>> trans_dataset.build_index()
-    >>>
-    >>> # Query structures for a batch of nodes
-    >>> batch_nodes = [0, 1, 2, 3, 4]
-    >>> structures = trans_dataset.query_batch(batch_nodes)
-    >>> print(f"Found {len(structures)} structures in batch")
-
-    Notes
-    -----
-    - The index is built once and persisted to disk
-    - Subsequent runs reuse the index for fast startup
-    - Memory usage is constant O(1) regardless of graph size
-    - Compatible with mini-batch training via node sampling
-
-    See Also
-    --------
-    topobench.data.structure_query.StructureQueryEngine :
-        Underlying query engine for structure lookups.
-    topobench.data.preprocessor.ondisk_inductive.OnDiskInductiveDataset :
-        Inductive learning variant.
+    >>> # Alternative: Manual cleanup
+    >>> preprocessor = OnDiskTransductiveDataset(...)
+    >>> preprocessor.build_index()
+    >>> # ... use preprocessor ...
+    >>> preprocessor.close()  # Remember to call close()
     """
 
     def __init__(
@@ -118,15 +101,10 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
         super().__init__()
         self.graph_data = graph_data
         self.data_dir = Path(data_dir)
+        # Will be used by OnDiskTransductiveCollate during batch construction.
         self.transforms_config = transforms_config
         self.max_structure_size = max_structure_size
         self.force_rebuild = force_rebuild
-
-        # Note: transforms_config is stored for compatibility with TopoBench framework
-        # and will be used by OnDiskTransductiveCollate during batch construction.
-        # The transductive preprocessor indexes raw structures, and transforms are
-        # applied during collation (unlike inductive, where transforms are applied
-        # during preprocessing).
 
         # Convert PyG Data to NetworkX for structure detection
         self.nx_graph = self._pyg_to_networkx(graph_data)
@@ -163,7 +141,7 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
 
         # Add edges
         edge_index = data.edge_index.cpu().numpy()
-        edges = list(zip(edge_index[0], edge_index[1]))
+        edges = list(zip(edge_index[0], edge_index[1], strict=False))
         G.add_edges_from(edges)
 
         return G
@@ -179,14 +157,16 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
         This is a one-time operation. The index is persisted to disk and
         reused in subsequent runs unless force_rebuild=True.
         """
-        print(f"Building index for graph: {self.num_nodes} nodes, {self.nx_graph.number_of_edges()} edges")
+        print(
+            f"Building index for graph: {self.num_nodes} nodes, {self.nx_graph.number_of_edges()} edges"
+        )
 
         self.query_engine.open()
         self.query_engine.build_index()
         self.num_structures = self.query_engine.num_structures
         self._index_built = True
 
-        print(f"✓ Index ready: {self.num_structures} structures indexed")
+        print(f"Index ready: {self.num_structures} structures indexed")
 
     def query_batch(
         self, node_ids: list[int], fully_contained: bool = True
@@ -212,9 +192,7 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
         structures don't reference nodes outside the training batch.
         """
         if not self._index_built:
-            raise RuntimeError(
-                "Index not built. Call build_index() first."
-            )
+            raise RuntimeError("Index not built. Call build_index() first.")
 
         return self.query_engine.query_batch(
             node_ids, fully_contained=fully_contained
@@ -232,13 +210,6 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
         -------
         Data
             PyTorch Geometric Data object for the subgraph.
-
-        Notes
-        -----
-        This creates a subgraph containing:
-        - The specified nodes and their features
-        - Edges between these nodes
-        - Topological structures (fully contained in the batch)
         """
         # Get structures for this batch
         structures = self.query_batch(node_ids, fully_contained=True)
@@ -255,22 +226,27 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
         subgraph_data = Data()
 
         # Node features
-        if hasattr(self.graph_data, 'x') and self.graph_data.x is not None:
+        if hasattr(self.graph_data, "x") and self.graph_data.x is not None:
             subgraph_data.x = self.graph_data.x[node_mask]
 
         # Labels (if present)
-        if hasattr(self.graph_data, 'y') and self.graph_data.y is not None:
+        if hasattr(self.graph_data, "y") and self.graph_data.y is not None:
             subgraph_data.y = self.graph_data.y[node_mask]
 
         # Edges (reindex to subgraph)
         subgraph_edge_index = edge_index[:, edge_mask]
 
         # Reindex nodes
-        node_mapping = {old_id: new_id for new_id, old_id in enumerate(node_ids)}
-        reindexed_edges = torch.tensor([
-            [node_mapping[src.item()], node_mapping[dst.item()]]
-            for src, dst in subgraph_edge_index.t()
-        ], dtype=torch.long).t()
+        node_mapping = {
+            old_id: new_id for new_id, old_id in enumerate(node_ids)
+        }
+        reindexed_edges = torch.tensor(
+            [
+                [node_mapping[src.item()], node_mapping[dst.item()]]
+                for src, dst in subgraph_edge_index.t()
+            ],
+            dtype=torch.long,
+        ).t()
 
         subgraph_data.edge_index = reindexed_edges
 
@@ -279,6 +255,61 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
         subgraph_data.num_structures = len(structures)
 
         return subgraph_data
+
+    def load_dataset_splits(
+        self,
+        split_config: DictConfig,
+    ) -> tuple[Any, Any, Any]:
+        """Load train/val/test dataset splits.
+
+        Parameters
+        ----------
+        split_config : DictConfig
+            Split configuration with strategy and parameters:
+            - strategy : str
+                "structure_centric" or "extended_context"
+            - For "structure_centric":
+                - structures_per_batch : int (default: 500)
+                - node_budget : int (default: 2000)
+            - For "extended_context":
+                - nodes_per_batch : int (default: 1000)
+                - max_expansion_ratio : float (default: 1.5)
+                - sampler_method : str (default: "louvain")
+
+        Returns
+        -------
+        tuple[Dataset, Dataset, Dataset]
+            Train, validation, and test datasets.
+
+        Examples
+        --------
+        >>> from omegaconf import OmegaConf
+        >>>
+        >>> # Structure-centric strategy
+        >>> split_config = OmegaConf.create({
+        ...     "strategy": "structure_centric",
+        ...     "structures_per_batch": 500,
+        ...     "node_budget": 2000,
+        ... })
+        >>> train, val, test = preprocessor.load_dataset_splits(split_config)
+        >>> datamodule = TBDataloader(train, val, test, batch_size=1)
+        >>> trainer.fit(model, datamodule)
+        >>>
+        >>> # Extended context strategy
+        >>> split_config = OmegaConf.create({
+        ...     "strategy": "extended_context",
+        ...     "nodes_per_batch": 1000,
+        ...     "max_expansion_ratio": 1.5,
+        ...     "sampler_method": "louvain",
+        ... })
+        >>> train, val, test = preprocessor.load_dataset_splits(split_config)
+        >>> datamodule = TBDataloader(train, val, test, batch_size=1)
+        >>> trainer.fit(model, datamodule)
+        """
+        # Use the split utility (follows inductive pattern)
+        from topobench.data.utils.split_utils import load_transductive_splits
+
+        return load_transductive_splits(self, split_config)
 
     def get_stats(self) -> dict[str, Any]:
         """Get dataset statistics.
@@ -356,7 +387,5 @@ class OnDiskTransductivePreprocessor(torch.utils.data.Dataset):
 
     def __del__(self):
         """Cleanup on deletion."""
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except:
-            pass
