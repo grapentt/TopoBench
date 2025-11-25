@@ -457,16 +457,52 @@ class OnDiskInductivePreprocessor(Dataset):
         return data
 
     def _should_process(self) -> bool:
-        """Check if dataset needs to be processed.
+        """Check if dataset needs processing (DAG-aware).
+
+        For DAG-based caching:
+        - Check if final transform output exists and is valid
+        - If transform chain exists, use incremental checking
+        - Returns True if any transform in chain needs processing
 
         Returns
         -------
         bool
-            True if processing is needed, False if cache is valid.
+            True if processing is needed, False if all transforms cached.
         """
         if self.force_reload:
             return True
 
+        # DAG-aware: Check if any transform in chain needs processing
+        if hasattr(self, "transform_chain") and self.transform_chain:
+            # Check each transform in chain
+            for entry in self.transform_chain:
+                if not entry["cached"]:
+                    # At least one transform not cached, need processing
+                    return True
+            
+            # All transforms cached, check final output validity
+            if not self.metadata_path.exists():
+                return True
+            
+            try:
+                with open(self.metadata_path) as f:
+                    metadata = json.load(f)
+                
+                # Verify transform chain matches
+                saved_chain = metadata.get("transform_chain", [])
+                if len(saved_chain) != len(self.transform_chain):
+                    return True
+                
+                # Check each transform hash matches
+                for saved, current in zip(saved_chain, self.transform_chain):
+                    if saved.get("hash") != current["hash"]:
+                        return True
+                
+                return False
+            except (json.JSONDecodeError, KeyError, FileNotFoundError):
+                return True
+        
+        # No transform chain
         if not self.metadata_path.exists():
             return True
 
@@ -503,13 +539,166 @@ class OnDiskInductivePreprocessor(Dataset):
             return True
 
     def _process_samples(self) -> None:
-        """Iterate through samples, apply transforms, and save to disk.
+        """Process samples with DAG-based incremental caching.
 
-        Uses parallel processing when num_workers > 1 for 4-8× speedup.
-        Falls back to sequential processing when num_workers=1.
+        Only processes uncached transforms, reuses cached ones!
         """
+        # DAG-aware incremental processing
+        if hasattr(self, "transform_chain") and self.transform_chain:
+            self._process_samples_incremental()
+        else:
+            # Legacy: Full processing (no transform chain)
+            self._process_samples_full()
+    
+    def _process_samples_incremental(self) -> None:
+        """Process samples incrementally using transform chain cache.
+        
+        Only processes uncached transforms.
+        """
+        # Find which transforms need processing
+        uncached_indices = [
+            i for i, entry in enumerate(self.transform_chain)
+            if not entry["cached"]
+        ]
+        
+        if not uncached_indices:
+            # All cached! Just load metadata
+            self._load_metadata()
+            return
+        
+        # Find last cached transform (our starting point)
+        first_uncached_idx = uncached_indices[0]
+        
+        if first_uncached_idx == 0:
+            # No cached transforms, process from scratch
+            source_dataset = self.dataset
+            source_transform = self.pre_transform
+        else:
+            # Load from last cached transform!
+            last_cached_idx = first_uncached_idx - 1
+            cached_entry = self.transform_chain[last_cached_idx]
+            cached_dir = Path(cached_entry["output_dir"])
+            
+            print(f"Reusing {last_cached_idx + 1} cached transform(s)!")
+            print(f"Loading from: {cached_dir}")
+            print(f"Processing remaining {len(uncached_indices)} transform(s)")
+            
+            # Create dataset that loads from cached location
+            source_dataset = self._create_cached_dataset(cached_dir)
+            
+            # Create transform for remaining uncached transforms
+            source_transform = self._create_partial_transform(first_uncached_idx)
+        
+        # Process uncached transforms
+        self._process_samples_full(
+            source_dataset=source_dataset,
+            source_transform=source_transform
+        )
+    
+    def _create_cached_dataset(self, cached_dir: Path) -> Dataset:
+        """Create dataset that loads from cached transform output.
+        
+        Parameters
+        ----------
+        cached_dir : Path
+            Directory containing cached samples.
+        
+        Returns
+        -------
+        Dataset
+            Dataset that loads from cache.
+        """
+        # Simple wrapper dataset that loads from cached location
+        class CachedDataset(Dataset):
+            def __init__(self, cache_dir: Path, num_samples: int, storage_backend: str, compression: str):
+                self.cache_dir = cache_dir
+                self.num_samples = num_samples
+                self.storage_backend = storage_backend
+                
+                # Load storage if mmap
+                if storage_backend == "mmap":
+                    try:
+                        self._storage = MemoryMappedStorage(
+                            data_dir=cache_dir,
+                            compression=compression,
+                            readonly=True,
+                        )
+                    except FileNotFoundError:
+                        self._storage = None
+                else:
+                    self._storage = None
+            
+            def __len__(self):
+                return self.num_samples
+            
+            def __getitem__(self, idx):
+                if self._storage is not None:
+                    return self._storage[idx]
+                else:
+                    # Load from file
+                    sample_path = self.cache_dir / f"sample_{idx:06d}.pt"
+                    return torch.load(sample_path, weights_only=False)
+        
+        # Load metadata to get num_samples
+        metadata_path = cached_dir / "dataset_metadata.json"
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+        num_samples = metadata["num_samples"]
+        
+        return CachedDataset(cached_dir, num_samples, self.storage_backend, self.compression)
+    
+    def _create_partial_transform(self, start_idx: int) -> torch_geometric.transforms.Compose:
+        """Create transform composed of only uncached transforms.
+        
+        Parameters
+        ----------
+        start_idx : int
+            Index of first uncached transform in chain.
+        
+        Returns
+        -------
+        Compose
+            Composed transform of uncached transforms.
+        """
+        # Get uncached transforms from pipeline
+        dag = self.transform_pipeline.get_dag()
+        uncached_transform_ids = [
+            self.transform_chain[i]["transform_id"]
+            for i in range(start_idx, len(self.transform_chain))
+        ]
+        
+        # Extract transform objects
+        transforms = [
+            dag.nodes[tid].transform
+            for tid in uncached_transform_ids
+        ]
+        
+        if not transforms:
+            return None
+        
+        return torch_geometric.transforms.Compose(transforms)
+    
+    def _process_samples_full(
+        self,
+        source_dataset: Dataset | None = None,
+        source_transform: torch_geometric.transforms.Compose | None = None
+    ) -> None:
+        """Full processing (used by both legacy and incremental paths).
+        
+        Parameters
+        ----------
+        source_dataset : Dataset, optional
+            Source dataset to process (default: self.dataset).
+        source_transform : Compose, optional
+            Transform to apply (default: self.pre_transform).
+        """
+        if source_dataset is None:
+            source_dataset = self.dataset
+        if source_transform is None:
+            source_transform = self.pre_transform
+        
         print(
-            f"Processing {len(self.dataset)} samples to {self.processed_dir}"
+            f"Processing {len(source_dataset)} samples to {self.processed_dir}"
         )
 
         # Clear existing files if force_reload
@@ -525,14 +714,14 @@ class OnDiskInductivePreprocessor(Dataset):
 
         # Process samples (parallel or sequential)
         results = processor.process(
-            dataset=self.dataset,
-            transform=self.pre_transform,
+            dataset=source_dataset,
+            transform=source_transform,
             output_dir=self.processed_dir,
-            num_samples=len(self.dataset),
+            num_samples=len(source_dataset),
         )
 
         # Save metadata
-        self.num_samples = len(self.dataset)
+        self.num_samples = len(source_dataset)
         self._save_metadata()
 
         # Report results
@@ -637,32 +826,130 @@ class OnDiskInductivePreprocessor(Dataset):
             self.pre_transform = None
 
     def _set_processed_data_dir(self, transforms_config: DictConfig) -> None:
-        """Set processed data directory based on transform parameters.
+        """Set processed data directory based on transform chain (DAG-aware).
 
-        Creates a unique directory path using parameter hashing to enable
-        caching of preprocessed data across runs with identical configurations.
+        Creates per-transform directories enabling incremental caching:
+        - Each transform gets its own directory with unique hash
+        - Adding transforms reuses existing cached transforms
+        - Only changed/new transforms are recomputed
 
-        For two-tier mode, only heavy transforms affect the cache key,
-        allowing light transform changes without reprocessing.
+        Directory structure:
+            data_dir/
+                transform_chain/
+                    {transform_name_0}/
+                        {hash_0}/
+                            samples.mmap
+                    {transform_name_1}/
+                        {hash_1}/
+                            samples.mmap
 
         Parameters
         ----------
         transforms_config : DictConfig
             Transform configuration parameters.
         """
-        # Create repository name from transform keys
-        repo_name = "_".join(list(transforms_config.keys()))
-
-        # Hash transform parameters for unique cache directory
-        # Two-tier: Use pipeline cache key (heavy transforms only)
+        # Resolve transform chain from DAG
         if hasattr(self, "transform_pipeline") and self.transform_pipeline:
-            params_hash = self.transform_pipeline.compute_cache_key()
+            self._resolve_transform_chain()
         else:
-            # Fallback for no pipeline
+            # Fallback: No pipeline, use legacy behavior
+            repo_name = "_".join(list(transforms_config.keys()))
             params_hash = make_hash(self.transforms_parameters)
+            self.processed_dir = self.data_dir / repo_name / f"{params_hash}"
+            self.transform_chain = None
 
-        # Set processed directory path
-        self.processed_dir = self.data_dir / repo_name / f"{params_hash}"
+    def _resolve_transform_chain(self) -> None:
+        """Resolve transform chain from DAG with incremental cache checking.
+
+        This is the key method for DAG-based caching. It:
+        1. Iterates through transforms in execution order
+        2. Checks which transforms are already cached
+        3. Determines which transforms need processing
+        4. Sets final output directory (processed_dir)
+        """
+        dag = self.transform_pipeline.get_dag()
+        
+        # Build transform chain metadata
+        chain = []
+        for transform_id in dag.execution_order:
+            node = dag.nodes[transform_id]
+            
+            # Only track heavy transforms (light transforms are runtime)
+            if node.tier != "heavy":
+                continue
+            
+            # Create directory path for this transform
+            transform_class = node.transform.__class__.__name__
+            transform_hash = node.hash_value
+            transform_dir = self.data_dir / "transform_chain" / transform_class / transform_hash
+            
+            # Check if this transform is cached
+            is_cached = self._check_transform_cached(transform_dir)
+            
+            chain_entry = {
+                "transform_id": transform_id,
+                "transform_class": transform_class,
+                "hash": transform_hash,
+                "dependencies": node.dependencies,
+                "output_dir": str(transform_dir),
+                "cached": is_cached,
+            }
+            chain.append(chain_entry)
+        
+        # Store chain for metadata and processing
+        self.transform_chain = chain
+        
+        # Set processed_dir to final transform output
+        if chain:
+            self.processed_dir = Path(chain[-1]["output_dir"])
+        else:
+            # No heavy transforms, use default
+            self.processed_dir = self.data_dir / "no_heavy_transforms"
+    
+    def _check_transform_cached(self, transform_dir: Path) -> bool:
+        """Check if a transform's output is cached.
+
+        Parameters
+        ----------
+        transform_dir : Path
+            Directory where transform output should be stored.
+
+        Returns
+        -------
+        bool
+            True if cached (all required files exist), False otherwise.
+        """
+        if not transform_dir.exists():
+            return False
+        
+        # Check metadata exists
+        metadata_path = transform_dir / "dataset_metadata.json"
+        if not metadata_path.exists():
+            return False
+        
+        try:
+            with open(metadata_path) as f:
+                metadata = json.load(f)
+            num_samples = metadata.get("num_samples", 0)
+            
+            # Check storage files exist
+            if self.storage_backend == "mmap":
+                mmap_path = transform_dir / "samples.mmap"
+                idx_path = transform_dir / "samples.idx.npy"
+                storage_metadata_path = transform_dir / "metadata.json"
+                
+                if not (mmap_path.exists() and idx_path.exists() and storage_metadata_path.exists()):
+                    return False
+            else:
+                # Check sample files exist
+                for idx in range(min(10, num_samples)):  # Sample check first 10
+                    sample_path = transform_dir / f"sample_{idx:06d}.pt"
+                    if not sample_path.exists():
+                        return False
+            
+            return True
+        except (json.JSONDecodeError, KeyError, OSError):
+            return False
 
     def _get_sample_path(self, idx: int) -> Path:
         """Get file path for sample.
@@ -688,12 +975,17 @@ class OnDiskInductivePreprocessor(Dataset):
             self.metadata_path.unlink()
 
     def _save_metadata(self) -> None:
-        """Save dataset metadata to disk with transform tier info."""
+        """Save dataset metadata to disk with DAG transform chain info."""
         metadata = {
             "num_samples": self.num_samples,
             "source_dataset": str(type(self.dataset).__name__),
             "processed_dir": str(self.processed_dir),
         }
+
+        # Add DAG transform chain (enables incremental caching)
+        if hasattr(self, "transform_chain") and self.transform_chain:
+            metadata["transform_chain"] = self.transform_chain
+            metadata["final_output"] = str(self.processed_dir)
 
         # Add transform tier information
         if hasattr(self, "transform_pipeline") and self.transform_pipeline:
@@ -854,7 +1146,12 @@ class OnDiskInductivePreprocessor(Dataset):
         print("Converting to memory-mapped storage (parallel)...")
         
         # Determine number of workers (use same as preprocessing)
-        num_workers = self.num_workers if self.num_workers > 1 else 1
+        if self.num_workers is None:
+            # Auto-detect optimal worker count (same as ParallelProcessor)
+            cpu_count = os.cpu_count() or 1
+            num_workers = max(1, cpu_count - 1)
+        else:
+            num_workers = max(1, self.num_workers)
         
         if num_workers == 1 or self.num_samples < 1000:
             # Use sequential for small datasets or single worker

@@ -187,6 +187,12 @@ class PreProcessor(torch_geometric.data.InMemoryDataset):
             data_list = [data for data in self.dataset]
         elif isinstance(self.dataset, torch_geometric.data.Data):
             data_list = [self.dataset]
+        else:
+            raise TypeError(
+                f"Unsupported dataset type: {type(self.dataset)}. "
+                f"Expected torch_geometric.data.Dataset, torch.utils.data.Dataset, "
+                f"or torch_geometric.data.Data"
+            )
 
         self.data_list = (
             [self.pre_transform(d) for d in data_list]

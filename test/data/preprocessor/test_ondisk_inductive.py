@@ -355,11 +355,16 @@ class TestOnDiskInductivePreprocessor:
                 assert hasattr(sample, "edge_index")
                 assert sample.y.item() == idx % 3
             
+            # Test negative indexing
+            last_sample = dataset[-1]
+            assert isinstance(last_sample, Data)
+            assert last_sample.y.item() == 19 % 3
+            
             # Test invalid indices
             with pytest.raises(IndexError):
-                _ = dataset[-1]
+                _ = dataset[-21]  # Out of range negative
             with pytest.raises(IndexError):
-                _ = dataset[20]
+                _ = dataset[20]  # Out of range positive
             
             # Test metadata
             with open(dataset.metadata_path) as f:
@@ -406,7 +411,7 @@ class TestOnDiskInductivePreprocessor:
             torch.save({"corrupted": True}, sample_path)
             
             # Verify corrupted file can't be loaded properly
-            corrupted_data = torch.load(sample_path)
+            corrupted_data = torch.load(sample_path, weights_only=False)
             assert "corrupted" in corrupted_data
             
             # Force reload should recreate
@@ -419,7 +424,7 @@ class TestOnDiskInductivePreprocessor:
             )
             
             # Verify data is restored after reload
-            restored_data = torch.load(sample_path)
+            restored_data = torch.load(sample_path, weights_only=False)
             assert isinstance(restored_data, Data)
             assert hasattr(restored_data, "x")
             assert "corrupted" not in restored_data
@@ -1252,3 +1257,61 @@ class TestMemoryMappedStorageIntegration:
                 idx = shard_id * 100
                 if idx < 800:
                     assert dataset_many[idx].y.item() == idx % 3, f"8-shard boundary {idx} failed"
+    
+    def test_mmap_cache_validation_and_negative_indexing(self):
+        """Test mmap cache validation and negative indexing in one test."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            source = SyntheticCustomDataset(num_samples=100)
+            
+            # Test mmap cache validation
+            start1 = time.time()
+            dataset1 = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir,
+                transforms_config=None,
+                num_workers=1,
+                storage_backend="mmap",
+                compression="lz4",
+            )
+            time1 = time.time() - start1
+            
+            # Verify mmap files exist
+            mmap_path = dataset1.processed_dir / "samples.mmap"
+            assert mmap_path.exists(), "Mmap file should exist"
+            mtime1 = mmap_path.stat().st_mtime
+            
+            # Second init - should use cache
+            start2 = time.time()
+            dataset2 = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir,
+                transforms_config=None,
+                num_workers=1,
+                storage_backend="mmap",
+                compression="lz4",
+                force_reload=False,
+            )
+            time2 = time.time() - start2
+            
+            # Verify cache hit
+            mtime2 = mmap_path.stat().st_mtime
+            assert mtime1 == mtime2, "Cache should be reused"
+            speedup = time1 / time2
+            assert speedup > 10, f"Cache hit should be >10x faster, got {speedup:.1f}x"
+            
+            # Test negative indexing
+            last_sample = dataset2[-1]
+            assert isinstance(last_sample, Data)
+            assert torch.allclose(last_sample.x, dataset2[99].x)
+            
+            # Test various negative indices
+            for neg_idx in [-2, -10, -50]:
+                sample = dataset2[neg_idx]
+                expected = dataset2[100 + neg_idx]
+                assert isinstance(sample, Data)
+                assert torch.allclose(sample.x, expected.x)
+            
+            # Test out of range
+            with pytest.raises(IndexError):
+                _ = dataset2[-101]
