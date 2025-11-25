@@ -17,6 +17,7 @@ from torch_geometric.data import Data
 from topobench.data.preprocessor._ondisk.transform_classifier import (
     TransformClassifier,
 )
+from topobench.data.preprocessor._ondisk.transform_dag import TransformDAG
 from topobench.data.utils import ensure_serializable, make_hash
 
 
@@ -77,18 +78,6 @@ class TransformPipeline:
     >>>
     >>> # Apply light transforms at runtime
     >>> augmented_data = pipeline.apply_light(preprocessed_data)
-
-    See Also
-    --------
-    TransformClassifier : Automatically classifies transforms as heavy or light.
-    OnDiskInductivePreprocessor : Uses pipeline for two-tier preprocessing.
-
-    Notes
-    -----
-    The two-tier system provides massive speedup for augmentation experiments: TODO: actual numbers
-    - Current: 10 experiments × 20 min = 200 min
-    - Two-tier: 20 min + 10 × 0 sec = 20 min
-    - Speedup: 10× (or 100× for 100 experiments)
     """
 
     def __init__(
@@ -114,6 +103,9 @@ class TransformPipeline:
 
         # Classify transforms into heavy and light
         self._classify_transforms()
+
+        # Build dependency graph for granular caching
+        self._build_dag()
 
         # Create composed transforms for each tier
         self.heavy_compose = (
@@ -165,6 +157,31 @@ class TransformPipeline:
             raise ValueError(
                 f"Invalid transform_tier: {self.transform_tier}. "
                 f"Must be one of: 'auto', 'all_heavy', 'all_light', 'manual'"
+            )
+
+    def _build_dag(self) -> None:
+        """Build dependency graph from classified transforms.
+
+        Creates a DAG with sequential dependencies (transform N depends on N-1).
+        This enables per-transform hashing and granular cache invalidation.
+        """
+        self.dag = TransformDAG()
+
+        # Add heavy transforms with sequential dependencies
+        prev_id = None
+        for transform in self.heavy_transforms:
+            deps = [prev_id] if prev_id else None
+            prev_id = self.dag.add_transform(
+                transform, tier="heavy", dependencies=deps
+            )
+
+        # Add light transforms (depend on last heavy transform)
+        last_heavy = prev_id
+        prev_id = last_heavy
+        for transform in self.light_transforms:
+            deps = [prev_id] if prev_id else None
+            prev_id = self.dag.add_transform(
+                transform, tier="light", dependencies=deps
             )
 
     def apply_heavy(self, data: Data) -> Data:
@@ -256,6 +273,31 @@ class TransformPipeline:
         # Convert to hex string for consistency with file paths
         return hex(hash_int)[2:]  # Remove '0x' prefix
 
+    def get_dag(self) -> TransformDAG:
+        """Get dependency graph for advanced use cases.
+
+        Returns
+        -------
+        TransformDAG
+            Transform dependency graph with per-transform hashes and dependencies.
+
+        Examples
+        --------
+        >>> pipeline = TransformPipeline(transforms, transform_tier="auto")
+        >>> dag = pipeline.get_dag()
+        >>>
+        >>> # Find which transforms are affected by a change
+        >>> affected = dag.get_affected_transforms("SimplicialLifting_0")
+        >>> print(f"Changing lifting affects: {affected}")
+        ['SimplicialLifting_0', 'FeatureNorm_0', 'RandomNoise_0']
+        >>>
+        >>> # Get per-transform hash
+        >>> hash_val = dag.get_transform_hash("SimplicialLifting_0")
+        >>> print(f"Lifting hash: {hash_val}")
+        abc123def456...
+        """
+        return self.dag
+
     def get_summary(self) -> dict[str, Any]:
         """Get pipeline summary for debugging and logging.
 
@@ -270,6 +312,7 @@ class TransformPipeline:
             - light_names: List of light transform names
             - transform_tier: Classification mode used
             - cache_key: Hash of heavy transforms
+            - dag_nodes: Number of DAG nodes
 
         Examples
         --------
@@ -290,6 +333,7 @@ class TransformPipeline:
             ],
             "transform_tier": self.transform_tier,
             "cache_key": self.compute_cache_key(),
+            "dag_nodes": len(self.dag.nodes),
         }
 
     def __repr__(self) -> str:
