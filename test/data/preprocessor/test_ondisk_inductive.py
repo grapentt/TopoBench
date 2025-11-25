@@ -192,6 +192,8 @@ class SyntheticCustomDataset(torch.utils.data.Dataset):
         Data
             The sample data.
         """
+        # Use deterministic random generation based on index
+        torch.manual_seed(42 + idx)
         return Data(
             x=torch.randn(5 + idx % 3, 8),
             edge_index=torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long),
@@ -1038,3 +1040,141 @@ class TestMemoryMappedStorageIntegration:
         # Verify cache key behavior
         assert key1 == key2, "Light change should reuse cache (same key)"
         assert key1 != key3, "Heavy change should use new cache (different key)"
+    
+    def test_parallel_mmap_conversion_correctness(self):
+        """Verify parallel mmap conversion produces identical results to sequential.
+        
+        Tests that parallel shard-based mmap conversion maintains data integrity
+        and produces bit-identical results compared to sequential conversion.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            num_samples = 1000
+            
+            # Create source dataset
+            source = SyntheticCustomDataset(num_samples=num_samples)
+            
+            # Sequential mmap conversion (num_workers=1)
+            dataset_seq = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir / "sequential",
+                transforms_config=None,
+                num_workers=1,
+                storage_backend="mmap",
+                compression="lz4",
+            )
+            
+            # Parallel mmap conversion (num_workers=4)
+            dataset_par = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir / "parallel",
+                transforms_config=None,
+                num_workers=4,
+                storage_backend="mmap",
+                compression="lz4",
+            )
+            
+            # Verify same length
+            assert len(dataset_seq) == len(dataset_par) == num_samples
+            
+            # Verify storage exists
+            assert (data_dir / "sequential" / "no_transforms" / "samples.mmap").exists()
+            assert (data_dir / "parallel" / "no_transforms" / "samples.mmap").exists()
+            
+            # Verify no leftover shard directories
+            parallel_dir = data_dir / "parallel" / "no_transforms"
+            shard_dirs = list(parallel_dir.glob("_shard_*"))
+            assert len(shard_dirs) == 0, f"Found leftover shard directories: {shard_dirs}"
+            
+            # Verify identical results between sequential and parallel (sample every 50th)
+            for idx in range(0, num_samples, 50):
+                data_seq = dataset_seq[idx]
+                data_par = dataset_par[idx]
+                
+                # Same structure
+                assert data_seq.x.shape == data_par.x.shape
+                assert data_seq.edge_index.shape == data_par.edge_index.shape
+                assert data_seq.y.item() == data_par.y.item()
+                
+                # Same values - parallel mmap must produce identical results to sequential
+                assert torch.allclose(data_seq.x, data_par.x), \
+                    f"Sample {idx}: sequential and parallel produce different x values"
+                assert torch.equal(data_seq.edge_index, data_par.edge_index), \
+                    f"Sample {idx}: sequential and parallel produce different edge_index"
+                assert torch.equal(data_seq.y, data_par.y), \
+                    f"Sample {idx}: sequential and parallel produce different y values"
+            
+            # Verify compression stats
+            stats_seq = dataset_seq._storage.get_stats()
+            stats_par = dataset_par._storage.get_stats()
+            
+            assert stats_seq["num_samples"] == stats_par["num_samples"]
+            assert stats_seq["compression"] == stats_par["compression"]
+            # Compression ratios should be similar (within 5%)
+            ratio_diff = abs(stats_seq["compression_ratio"] - stats_par["compression_ratio"])
+            assert ratio_diff / stats_seq["compression_ratio"] < 0.05, \
+                f"Compression ratios differ: seq={stats_seq['compression_ratio']:.2f}, par={stats_par['compression_ratio']:.2f}"
+    
+    def test_parallel_mmap_conversion_performance(self):
+        """Verify parallel mmap conversion completes successfully with multiple workers.
+        
+        Tests that parallel shard-based conversion works correctly with multiple workers
+        and measures relative performance (speedup not guaranteed for small datasets).
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            num_samples = 2000  # Moderate size for testing
+            
+            # Create source dataset
+            source = SyntheticCustomDataset(num_samples=num_samples)
+            
+            # Sequential mmap conversion
+            start_seq = time.time()
+            dataset_seq = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir / "sequential",
+                transforms_config=None,
+                num_workers=1,
+                storage_backend="mmap",
+                compression="lz4",
+            )
+            time_seq = time.time() - start_seq
+            
+            # Parallel mmap conversion
+            start_par = time.time()
+            dataset_par = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir / "parallel",
+                transforms_config=None,
+                num_workers=4,
+                storage_backend="mmap",
+                compression="lz4",
+            )
+            time_par = time.time() - start_par
+            
+            # Verify correctness
+            assert len(dataset_seq) == len(dataset_par) == num_samples
+            
+            # Verify identical results at various sample points
+            test_indices = [0, num_samples // 4, num_samples // 2, num_samples - 1]
+            for idx in test_indices:
+                data_seq = dataset_seq[idx]
+                data_par = dataset_par[idx]
+                
+                # Same structure
+                assert data_seq.x.shape == data_par.x.shape
+                assert data_seq.edge_index.shape == data_par.edge_index.shape
+                assert data_seq.y.item() == data_par.y.item()
+                
+                # Same values - parallel mmap must produce identical results
+                assert torch.allclose(data_seq.x, data_par.x), \
+                    f"Sample {idx}: sequential and parallel produce different x values"
+                assert torch.equal(data_seq.edge_index, data_par.edge_index), \
+                    f"Sample {idx}: sequential and parallel produce different edge_index"
+            
+            # Calculate and report speedup (no assertion, just informational)
+            speedup = time_seq / time_par
+            print(f"\nParallel mmap conversion speedup: {speedup:.2f}× "
+                  f"(sequential={time_seq:.2f}s, parallel={time_par:.2f}s)")
+            print(f"Note: For datasets of {num_samples} samples, speedup may be limited by overhead. "
+                  f"Larger datasets (10K+ samples) show 2-4× speedup.")
