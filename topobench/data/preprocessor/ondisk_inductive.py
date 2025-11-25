@@ -399,6 +399,10 @@ class OnDiskInductivePreprocessor(Dataset):
         FileNotFoundError
             If sample file doesn't exist on disk.
         """
+        # Support negative indexing like Python lists
+        if idx < 0:
+            idx = self.num_samples + idx
+        
         if idx < 0 or idx >= self.num_samples:
             raise IndexError(
                 f"Index {idx} out of range for dataset of size "
@@ -466,16 +470,26 @@ class OnDiskInductivePreprocessor(Dataset):
         if not self.metadata_path.exists():
             return True
 
-        # Verify all sample files exist
+        # Verify storage files exist based on backend
         try:
             with open(self.metadata_path) as f:
                 metadata = json.load(f)
             num_samples = metadata.get("num_samples", 0)
 
-            for idx in range(num_samples):
-                sample_path = self._get_sample_path(idx)
-                if not sample_path.exists():
+            if self.storage_backend == "mmap":
+                # Check for memory-mapped storage files
+                mmap_path = self.processed_dir / "samples.mmap"
+                idx_path = self.processed_dir / "samples.idx.npy"
+                storage_metadata_path = self.processed_dir / "metadata.json"
+                
+                if not (mmap_path.exists() and idx_path.exists() and storage_metadata_path.exists()):
                     return True
+            else:
+                # Check for individual sample files
+                for idx in range(num_samples):
+                    sample_path = self._get_sample_path(idx)
+                    if not sample_path.exists():
+                        return True
 
             # Verify transform parameters match (if applicable)
             if self.transforms_config is not None:
@@ -688,16 +702,9 @@ class OnDiskInductivePreprocessor(Dataset):
             metadata["heavy_transforms"] = summary["heavy_names"]
             metadata["light_transforms"] = summary["light_names"]
 
-            # Only save heavy parameters for cache validation
-            heavy_params = {}
-            for t in self.transform_pipeline.heavy_transforms:
-                if hasattr(t, "parameters"):
-                    heavy_params[t.__class__.__name__] = t.parameters
-            metadata["transforms_parameters"] = ensure_serializable(
-                heavy_params
-            )
-        elif self.transforms_config is not None:
-            # Fallback for no pipeline (shouldn't happen but safe)
+        # Always use self.transforms_parameters for consistency
+        # This ensures cache validation uses the same keys as instantiation
+        if self.transforms_config is not None:
             metadata["transforms_parameters"] = self.transforms_parameters
 
         with open(self.metadata_path, "w") as f:
