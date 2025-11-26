@@ -56,9 +56,21 @@ class LazySubset(Dataset):
 
         # Convert to list for consistent behavior
         if isinstance(indices, torch.Tensor):
-            self.indices = indices.tolist()
+            self._indices = indices.tolist()
         else:
-            self.indices = list(indices)
+            self._indices = list(indices)
+
+    def indices(self) -> list[int]:
+        """Return indices for this subset.
+        
+        This method is required by torch_geometric.data.Dataset.
+        
+        Returns
+        -------
+        list[int]
+            List of indices.
+        """
+        return self._indices
 
     def __len__(self) -> int:
         """Return length of subset.
@@ -70,7 +82,7 @@ class LazySubset(Dataset):
         int
             Number of samples in subset.
         """
-        return len(self.indices)
+        return len(self._indices)
 
     def __getitem__(self, idx: int):
         """Get sample at index.
@@ -92,13 +104,13 @@ class LazySubset(Dataset):
         IndexError
             If idx is out of range for this subset.
         """
-        if idx < 0 or idx >= len(self.indices):
+        if idx < 0 or idx >= len(self._indices):
             raise IndexError(
-                f"Index {idx} out of range for subset of size {len(self.indices)}"
+                f"Index {idx} out of range for subset of size {len(self._indices)}"
             )
 
         # Map subset index to dataset index
-        actual_idx = self.indices[idx]
+        actual_idx = self._indices[idx]
         return self.dataset[actual_idx]
 
     def __repr__(self) -> str:
@@ -111,7 +123,7 @@ class LazySubset(Dataset):
         """
         return (
             f"LazySubset(dataset={self.dataset.__class__.__name__}, "
-            f"size={len(self.indices)})"
+            f"size={len(self._indices)})"
         )
 
 
@@ -170,9 +182,21 @@ class LazyDataloadDataset(torch_geometric.data.Dataset):
 
         # Convert to list for consistent behavior
         if isinstance(indices, torch.Tensor):
-            self.indices = indices.tolist()
+            self._indices = indices.tolist()
         else:
-            self.indices = list(indices)
+            self._indices = list(indices)
+
+    def indices(self) -> list[int]:
+        """Return indices for this subset.
+        
+        This method is required by torch_geometric.data.Dataset.
+        
+        Returns
+        -------
+        list[int]
+            List of indices.
+        """
+        return self._indices
 
     def len(self) -> int:
         """Return length of subset.
@@ -184,44 +208,38 @@ class LazyDataloadDataset(torch_geometric.data.Dataset):
         int
             Number of samples in subset.
         """
-        return len(self.indices)
+        return len(self._indices)
 
     def get(self, idx: int) -> tuple[list, list]:
-        """Get sample at index as (values, keys) tuple.
+        """Get sample at ACTUAL dataset index (not subset index).
 
-        This method unpacks Data objects into tuples compatible with collate_fn.
-        The tuple format enables the collate function to properly batch samples.
-
-        O(1) operation - direct lookup via stored index + tuple unpacking.
+        This method is called by torch_geometric after it has already mapped
+        the subset index through self.indices(). Therefore, idx is the actual
+        dataset index, not a subset index.
 
         Parameters
         ----------
         idx : int
-            Index within subset (0 to len-1).
+            Actual dataset index (already mapped by torch_geometric).
 
         Returns
         -------
-        tuple
+        tuple[list, list]
             (values, keys) where:
             - values: list of tensor values from the Data object
             - keys: list of corresponding attribute names
-
-        Raises
-        ------
-        IndexError
-            If idx is out of range for this subset.
-        ```
         """
-        if idx < 0 or idx >= len(self.indices):
-            raise IndexError(
-                f"Index {idx} out of range for subset of size {len(self.indices)}"
-            )
-
-        # Map subset index to dataset index (LazySubset pattern)
-        actual_idx = self.indices[idx]
-
-        # Load sample from source dataset
-        data = self.dataset[actual_idx]
+        # Load sample from source dataset (idx is already the actual index)
+        data = self.dataset[idx]
+        
+        # For inductive learning with separate datasets, add dummy masks if not present
+        # This ensures compatibility with models that expect masks
+        if not hasattr(data, 'train_mask'):
+            data.train_mask = torch.tensor([1], dtype=torch.long)
+        if not hasattr(data, 'val_mask'):
+            data.val_mask = torch.tensor([0], dtype=torch.long)
+        if not hasattr(data, 'test_mask'):
+            data.test_mask = torch.tensor([0], dtype=torch.long)
 
         # Unpack into tuple format (DataloadDataset pattern)
         keys = list(data.keys())
@@ -239,5 +257,5 @@ class LazyDataloadDataset(torch_geometric.data.Dataset):
         """
         return (
             f"LazyDataloadDataset(dataset={self.dataset.__class__.__name__}, "
-            f"size={len(self.indices)})"
+            f"size={len(self._indices)})"
         )

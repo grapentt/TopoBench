@@ -472,3 +472,126 @@ class TestDAGCaching:
             # Verify data accessible
             sample = dataset2[0]
             assert isinstance(sample, Data)
+    
+    def test_dag_handles_duplicate_transforms_correctly(self):
+        """Test that duplicate transforms (same class/params) are cached separately."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            source = SyntheticCustomDataset(num_samples=30)
+            
+            from omegaconf import OmegaConf
+            
+            # Scenario 1: Build base transform
+            config1 = OmegaConf.create({
+                "clique_lifting": {
+                    "transform_type": "lifting",
+                    "transform_name": "SimplicialCliqueLifting",
+                    "complex_dim": 2,
+                },
+            })
+            
+            dataset1 = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir,
+                transforms_config=config1,
+                num_workers=1,
+                storage_backend="files",
+            )
+            
+            # Scenario 2: Add first ProjectionSum
+            config2 = OmegaConf.create({
+                "clique_lifting": {
+                    "transform_type": "lifting",
+                    "transform_name": "SimplicialCliqueLifting",
+                    "complex_dim": 2,
+                },
+                "proj1": {
+                    "transform_type": "feature",
+                    "transform_name": "ProjectionSum",
+                },
+            })
+            
+            dataset2 = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir,
+                transforms_config=config2,
+                num_workers=1,
+                storage_backend="files",
+            )
+            
+            # Verify we have 2 transforms in chain
+            assert len(dataset2.transform_chain) == 2
+            
+            # Get directories
+            dir1 = Path(dataset2.transform_chain[0]["output_dir"])
+            dir2 = Path(dataset2.transform_chain[1]["output_dir"])
+            
+            # Verify both exist
+            assert dir1.exists(), "First transform should be cached"
+            assert dir2.exists(), "Second transform should be cached"
+            
+            # Verify they're different directories
+            assert dir1 != dir2, "Different transforms should have different cache directories"
+            
+            # Scenario 3: Add SECOND ProjectionSum (identical to first!)
+            config3 = OmegaConf.create({
+                "clique_lifting": {
+                    "transform_type": "lifting",
+                    "transform_name": "SimplicialCliqueLifting",
+                    "complex_dim": 2,
+                },
+                "proj1": {
+                    "transform_type": "feature",
+                    "transform_name": "ProjectionSum",
+                },
+                "proj2": {  # Same transform as proj1!
+                    "transform_type": "feature",
+                    "transform_name": "ProjectionSum",
+                },
+            })
+            
+            start_time = time.time()
+            dataset3 = OnDiskInductivePreprocessor(
+                dataset=source,
+                data_dir=data_dir,
+                transforms_config=config3,
+                num_workers=1,
+                storage_backend="files",
+            )
+            time_taken = time.time() - start_time
+            
+            # Verify we have 3 transforms in chain
+            assert len(dataset3.transform_chain) == 3, \
+                "Should have 3 transforms: clique_lifting, proj1, proj2"
+            
+            # Get all directories
+            dir1_check = Path(dataset3.transform_chain[0]["output_dir"])
+            dir2_check = Path(dataset3.transform_chain[1]["output_dir"])
+            dir3 = Path(dataset3.transform_chain[2]["output_dir"])
+            
+            # Verify first two transforms were reused (same directories)
+            assert dir1_check == dir1, "First transform should be reused from cache"
+            assert dir2_check == dir2, "Second transform should be reused from cache"
+            
+            # Verify third transform exists and is DIFFERENT from second
+            assert dir3.exists(), "Third transform should have been processed"
+            assert dir3 != dir2, \
+                "CRITICAL: Duplicate ProjectionSum transforms must have different cache directories!"
+            assert dir3 != dir1, "Third transform should be different from first"
+            
+            # Verify time is reasonable (should only process third transform, not all)
+            # If bug exists, it would think proj2 is already cached and time would be ~0
+            assert time_taken > 0.05, \
+                f"Processing third transform should take measurable time (got {time_taken:.2f}s)"
+            
+            # Verify all samples accessible and correct
+            for i in range(min(5, len(source))):
+                sample = dataset3[i]
+                assert isinstance(sample, Data)
+                assert hasattr(sample, 'x'), "Sample should have features"
+            
+            print(f"\n✅ Duplicate transform test passed!")
+            print(f"   - Transform 1: {dir1.name}")
+            print(f"   - Transform 2: {dir2.name}")  
+            print(f"   - Transform 3: {dir3.name} (duplicate of 2, but correctly separate)")
+            print(f"   - Processing time: {time_taken:.2f}s")
