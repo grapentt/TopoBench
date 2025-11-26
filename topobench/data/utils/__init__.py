@@ -62,4 +62,24 @@ io_helper_functions = [
     # add function name here
 ]
 
-__all__ = utils_functions + split_helper_functions + io_helper_functions
+from .recall_metrics import (  # noqa: E402
+    compute_cumulative_recall,  # noqa: F401
+    compute_edge_density,  # noqa: F401
+    compute_intra_cluster_ratio,  # noqa: F401
+    compute_structure_recall,  # noqa: F401
+    extract_structures_from_data,  # noqa: F401
+    extract_structures_from_raw_data,  # noqa: F401
+    summarize_batch_metrics,  # noqa: F401
+)
+
+recall_metric_functions = [
+    "compute_structure_recall",
+    "compute_cumulative_recall",
+    "extract_structures_from_data",
+    "extract_structures_from_raw_data",
+    "compute_edge_density",
+    "compute_intra_cluster_ratio",
+    "summarize_batch_metrics",
+]
+
+__all__ = utils_functions + split_helper_functions + io_helper_functions + recall_metric_functions

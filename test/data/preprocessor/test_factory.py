@@ -3,7 +3,7 @@
 import pytest
 import torch
 import torch_geometric
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from torch_geometric.data import Data
 from torch_geometric.datasets import TUDataset
 
@@ -13,8 +13,12 @@ from topobench.data.preprocessor.factory import (
     _is_transductive,
     _should_use_ondisk,
 )
-from topobench.data.preprocessor.ondisk_inductive import OnDiskInductivePreprocessor
-from topobench.data.preprocessor.ondisk_transductive import OnDiskTransductivePreprocessor
+from topobench.data.preprocessor.ondisk_inductive import (
+    OnDiskInductivePreprocessor,
+)
+from topobench.data.preprocessor.ondisk_transductive import (
+    OnDiskTransductivePreprocessor,
+)
 from topobench.data.preprocessor.preprocessor import PreProcessor
 
 
@@ -144,8 +148,8 @@ class TestHelperFunctions:
         """Test auto mode chooses on-disk for large estimated memory."""
         # Simulate small available RAM
         result = _should_use_ondisk(
-            inductive_dataset, 
-            mode="auto", 
+            inductive_dataset,
+            mode="auto",
             available_ram_gb=0.00001,  # Extremely small to guarantee on-disk choice
             complex_dim=2
         )
@@ -155,8 +159,8 @@ class TestHelperFunctions:
         """Test auto mode chooses in-memory for small dataset."""
         # Simulate large available RAM
         result = _should_use_ondisk(
-            inductive_dataset, 
-            mode="auto", 
+            inductive_dataset,
+            mode="auto",
             available_ram_gb=100.0,  # Very large
             complex_dim=2
         )
@@ -344,12 +348,12 @@ class TestCreatePreprocessor:
         )
         
         # Both should have __len__
-        assert hasattr(inmemory, '__len__')
-        assert hasattr(ondisk, '__len__')
+        assert hasattr(inmemory, "__len__")
+        assert hasattr(ondisk, "__len__")
         
         # Both should have load_dataset_splits (if applicable)
         # Note: PreProcessor has it, OnDiskInductiveDataset has it
-        assert hasattr(ondisk, 'load_dataset_splits')
+        assert hasattr(ondisk, "load_dataset_splits")
 
     @pytest.mark.skip(reason="PreProcessor requires InMemoryDataset")
     def test_create_preprocessor_default_mode_is_auto(self, inductive_dataset, tmp_path):

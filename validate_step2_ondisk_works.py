@@ -78,7 +78,7 @@ def test_ondisk_approach(nodes=12000, avg_degree=25, seed=42):
     dataset = OnDiskTransductivePreprocessor(
         graph_data=data,
         data_dir=str(data_dir),
-        max_structure_size=3,  # Triangles
+        max_clique_size=3,  # Triangles
         force_rebuild=True,
     )
     print(f"✓ Dataset created")

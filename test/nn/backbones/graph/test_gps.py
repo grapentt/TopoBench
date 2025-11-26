@@ -2,8 +2,7 @@
 
 import pytest
 import torch
-import torch_geometric
-from torch_geometric.data import Data, Batch
+from torch_geometric.data import Batch
 
 from topobench.nn.backbones.graph.gps import GPSEncoder, RedrawProjection
 

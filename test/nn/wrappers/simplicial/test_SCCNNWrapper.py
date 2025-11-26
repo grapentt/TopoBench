@@ -1,19 +1,17 @@
 """Unit tests for simplicial model wrappers."""
 
-import torch
-from torch_geometric.utils import get_laplacian
-from ...._utils.nn_module_auto_test import NNModuleAutoTest
-from ...._utils.flow_mocker import FlowMocker
-from topobench.nn.backbones.simplicial import SCCNNCustom
 from topomodelx.nn.simplicial.san import SAN
-from topomodelx.nn.simplicial.scn2 import SCN2
 from topomodelx.nn.simplicial.sccn import SCCN
+from topomodelx.nn.simplicial.scn2 import SCN2
+
+from topobench.nn.backbones.simplicial import SCCNNCustom
 from topobench.nn.wrappers import (
-    SCCNWrapper,
-    SCCNNWrapper,
     SANWrapper,
-    SCNWrapper
+    SCCNNWrapper,
+    SCCNWrapper,
+    SCNWrapper,
 )
+
 
 class TestSimplicialWrappers:
     """Test simplicial model wrappers."""
@@ -33,8 +31,8 @@ class TestSimplicialWrappers:
         init_args = (data.x_0.shape[1], data.x_1.shape[1], data.x_2.shape[1]), (out_dim, out_dim, out_dim), conv_order, sc_order
 
         wrapper = SCCNNWrapper(
-            SCCNNCustom(*init_args), 
-            out_channels=out_dim, 
+            SCCNNCustom(*init_args),
+            out_channels=out_dim,
             num_cell_dimensions=3
         )
         out = wrapper(data)
@@ -55,8 +53,8 @@ class TestSimplicialWrappers:
         hidden_channels = data.x_0.shape[1]
 
         wrapper = SANWrapper(
-            SAN(data.x_0.shape[1], hidden_channels), 
-            out_channels=out_dim, 
+            SAN(data.x_0.shape[1], hidden_channels),
+            out_channels=out_dim,
             num_cell_dimensions=3
         )
         out = wrapper(data)
@@ -76,8 +74,8 @@ class TestSimplicialWrappers:
         out_dim = data.x_0.shape[1]
 
         wrapper = SCNWrapper(
-            SCN2(data.x_0.shape[1], data.x_1.shape[1], data.x_2.shape[1]), 
-            out_channels=out_dim, 
+            SCN2(data.x_0.shape[1], data.x_1.shape[1], data.x_2.shape[1]),
+            out_channels=out_dim,
             num_cell_dimensions=3
         )
         out = wrapper(data)
@@ -98,8 +96,8 @@ class TestSimplicialWrappers:
         max_rank = 2
 
         wrapper = SCCNWrapper(
-            SCCN(data.x_0.shape[1], max_rank), 
-            out_channels=out_dim, 
+            SCCN(data.x_0.shape[1], max_rank),
+            out_channels=out_dim,
             num_cell_dimensions=3
         )
         out = wrapper(data)

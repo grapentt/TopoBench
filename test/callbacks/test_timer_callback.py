@@ -1,7 +1,9 @@
 """Test the PipelineTimer callback."""
-import pytest
 import time
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
+
+import pytest
+
 from topobench.callbacks.timer_callback import PipelineTimer
 
 

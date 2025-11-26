@@ -130,7 +130,7 @@ start_time = time.time()
 dataset = OnDiskTransductivePreprocessor(
     graph_data=data,
     data_dir=str(data_dir),
-    max_structure_size=3,  # Triangles
+    max_clique_size=3,  # Triangles
     force_rebuild=True,
 )
 

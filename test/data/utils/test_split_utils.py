@@ -1,20 +1,19 @@
 """Unit tests for split utilities."""
 
 import os
-import tempfile
 import shutil
-import pytest
+import tempfile
+from unittest.mock import MagicMock
+
 import numpy as np
-import torch
-from unittest.mock import MagicMock, patch
+import pytest
 from omegaconf import DictConfig
 
 from topobench.data.utils.split_utils import (
-    k_fold_split,
-    random_splitting,
-    load_inductive_splits,
-    load_transductive_splits,
     assign_train_val_test_mask_to_graphs,
+    k_fold_split,
+    load_inductive_splits,
+    random_splitting,
 )
 
 
@@ -188,8 +187,8 @@ class TestLoadInductiveSplits:
         label_shapes = [()] * n_graphs
         mock_dataset = self.create_mock_dataset(n_graphs, label_shapes)
         # Ensure split_idx attribute doesn't exist
-        if hasattr(mock_dataset, 'split_idx'):
-            delattr(mock_dataset, 'split_idx')
+        if hasattr(mock_dataset, "split_idx"):
+            delattr(mock_dataset, "split_idx")
         
         parameters = DictConfig({
             "split_type": "fixed",
@@ -267,9 +266,9 @@ class TestLoadInductiveSplits:
         # Check that masks are properly assigned to the data_lst items
         for i in range(len(train_ds.data_lst)):
             graph = train_ds.data_lst[i]
-            assert hasattr(graph, 'train_mask')
-            assert hasattr(graph, 'val_mask')
-            assert hasattr(graph, 'test_mask')
+            assert hasattr(graph, "train_mask")
+            assert hasattr(graph, "val_mask")
+            assert hasattr(graph, "test_mask")
             assert graph.train_mask.item() == 1
             assert graph.val_mask.item() == 0
             assert graph.test_mask.item() == 0

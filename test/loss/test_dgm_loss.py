@@ -1,10 +1,13 @@
 """Test the DGMLoss class."""
 
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 import torch_geometric
-from unittest.mock import MagicMock
+
 from topobench.loss.model.DGMLoss import DGMLoss
+
 
 @pytest.fixture
 def mock_batch():

@@ -1,7 +1,6 @@
 """Synthetic large transductive dataset for validation testing."""
 
 import os.path as osp
-from typing import ClassVar
 
 import networkx as nx
 import torch
@@ -121,7 +120,6 @@ class SyntheticLargeTransductiveDataset(InMemoryDataset):
 
     def download(self) -> None:
         """Download is not needed for synthetic data."""
-        pass
 
     def process(self) -> None:
         """Generate synthetic large graph and save it.
@@ -129,7 +127,7 @@ class SyntheticLargeTransductiveDataset(InMemoryDataset):
         This method creates a single large synthetic graph using
         Watts-Strogatz model for transductive node classification.
         """
-        print(f"Generating synthetic transductive graph...")
+        print("Generating synthetic transductive graph...")
         print(f"  Nodes: {self._num_nodes}")
         print(f"  Degree: {self._degree}")
         print(f"  Features: {self._num_node_features}")
@@ -176,7 +174,7 @@ class SyntheticLargeTransductiveDataset(InMemoryDataset):
             test_mask=test_mask,
         )
 
-        print(f"✓ Generated graph:")
+        print("✓ Generated graph:")
         print(f"  Nodes: {n}")
         print(f"  Edges: {G.number_of_edges():,}")
         print(f"  Train nodes: {train_mask.sum()}")

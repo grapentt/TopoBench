@@ -5,6 +5,7 @@ import torch_geometric
 
 from topobench.loss.dataset import DatasetLoss
 
+
 class TestDatasetLoss:
     """ Test the TBEvaluator class."""
     
@@ -41,11 +42,11 @@ class TestDatasetLoss:
         out = self.dataset3.forward(model_out, batch)
         assert out.item() >= 0
         
-        model_out = {"logits": torch.tensor([[0.1, 0.2, 0.3], [0.1, 0.2, 0.3]]), "labels": torch.tensor([[0.1, float('nan'), 0.3], [0.1, 0.2, float('nan')]])}
+        model_out = {"logits": torch.tensor([[0.1, 0.2, 0.3], [0.1, 0.2, 0.3]]), "labels": torch.tensor([[0.1, float("nan"), 0.3], [0.1, 0.2, float("nan")]])}
         out = self.dataset4.forward(model_out, batch)
         assert out.item() >= 0
 
-        self.dataset5.task = 'not defined'
+        self.dataset5.task = "not defined"
         with pytest.raises(Exception):
             self.dataset5(model_out, batch)
 

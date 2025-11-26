@@ -208,9 +208,10 @@ class TestIntegrationWithCollate:
     
     def test_cluster_sampling_with_collate(self, small_graph, tmp_path):
         """Test full pipeline: cluster sampling + collate + transforms."""
+        from omegaconf import OmegaConf
+
         from topobench.data.preprocessor import OnDiskTransductivePreprocessor
         from topobench.dataloader import OnDiskTransductiveCollate
-        from omegaconf import OmegaConf
         
         # Create preprocessor with transforms
         transforms_config = OmegaConf.create({
@@ -225,7 +226,7 @@ class TestIntegrationWithCollate:
             graph_data=small_graph,
             data_dir=tmp_path / "index",
             transforms_config=transforms_config,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         
@@ -245,9 +246,9 @@ class TestIntegrationWithCollate:
             batch = collate_fn([batch_nodes])
             
             # Verify batch has transform structures
-            assert hasattr(batch, 'x_0'), "Should have x_0 after transform"
-            assert hasattr(batch, 'x_1'), "Should have x_1 after transform"
-            assert hasattr(batch, 'incidence_1'), "Should have incidence_1"
+            assert hasattr(batch, "x_0"), "Should have x_0 after transform"
+            assert hasattr(batch, "x_1"), "Should have x_1 after transform"
+            assert hasattr(batch, "incidence_1"), "Should have incidence_1"
             
             # Verify batch size matches
             assert batch.num_nodes == len(batch_nodes)

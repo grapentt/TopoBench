@@ -4,7 +4,6 @@ This test suite validates the two-tier transform pipeline that separates
 heavy (offline) and light (runtime) transforms for fast experimentation.
 """
 
-import pytest
 import torch
 import torch_geometric
 from torch_geometric.data import Data

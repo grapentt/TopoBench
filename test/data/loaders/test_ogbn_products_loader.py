@@ -1,7 +1,6 @@
 """Tests for OGBN-products loader."""
 
 import pytest
-import torch
 from omegaconf import OmegaConf
 
 from topobench.data.loaders import OGBNProductsLoader

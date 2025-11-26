@@ -158,7 +158,7 @@ def test_ondisk_dense(nodes, avg_degree):
         ondisk_dataset = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(data_dir),
-            max_structure_size=3,
+            max_clique_size=3,
             force_rebuild=True,
         )
 

@@ -1,16 +1,12 @@
 """Test the Dataloader class."""
 
+
 import hydra
-import rootutils
 import torch
 
 from topobench.data.preprocessor import PreProcessor
 from topobench.dataloader import TBDataloader
 from topobench.dataloader.utils import to_data_list
-
-from omegaconf import OmegaConf
-import os
-from topobench.run import initialize_hydra
 
 # rootutils.setup_root("./", indicator=".project-root", pythonpath=True)
 

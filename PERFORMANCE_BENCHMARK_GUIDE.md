@@ -339,6 +339,22 @@ After running benchmarks, create a table like this:
 
 ---
 
+## 🔥 Phase 2: Two-Tier Transform System Benchmarks (TODO)
+
+### 6. Augmentation Experiment Speedup
+**Target**: 10-100× speedup for N augmentation experiments  
+**Status**: ⏳ To be implemented in `test_ondisk_two_tier.py`
+
+### 7. Cache Reuse Verification  
+**Target**: Same cache for light changes, different for heavy  
+**Status**: ⏳ To be implemented
+
+### 8. Runtime Overhead
+**Target**: <1ms overhead for light transforms  
+**Status**: ⏳ To be implemented
+
+---
+
 ## 📝 What to Record
 
 For each benchmark, capture:

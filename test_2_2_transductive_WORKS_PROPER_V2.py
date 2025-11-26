@@ -120,7 +120,7 @@ try:
     ondisk_dataset = OnDiskTransductivePreprocessor(
         graph_data=data,
         data_dir=str(ondisk_dir),
-        max_structure_size=3,  # Triangles
+        max_clique_size=3,  # Triangles
         force_rebuild=True,
     )
 

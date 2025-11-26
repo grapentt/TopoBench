@@ -2,11 +2,16 @@
 
 import pytest
 import torch
-from torch_geometric.data import Data
-from test._utils.nn_module_auto_test import NNModuleAutoTest
-from topobench.nn.backbones.combinatorial.gccn_onehasse import TopoTune_OneHasse, get_activation
-from torch_geometric.nn import GCNConv
 from omegaconf import OmegaConf
+from torch_geometric.data import Data
+from torch_geometric.nn import GCNConv
+
+from test._utils.nn_module_auto_test import NNModuleAutoTest
+from topobench.nn.backbones.combinatorial.gccn_onehasse import (
+    TopoTune_OneHasse,
+    get_activation,
+)
+
 
 class MockGNN(torch.nn.Module):
     """Mock GNN module for testing purposes.
@@ -136,7 +141,7 @@ def create_mock_complex_batch():
     ).coalesce()
     batch["up_adjacency-2"] = adjacency_2
 
-    cell_statistics = torch.tensor([[3, 3, 1]]) 
+    cell_statistics = torch.tensor([[3, 3, 1]])
     batch["cell_statistics"] = cell_statistics
     return batch
 
@@ -391,7 +396,7 @@ def test_topotune_onehasse_indexerror_in_aggregate_inter_nbhd(mocker):
         membership[0] = torch.arange(10)  # artificially claim 10 'nodes' at rank=0
         return membership
 
-    mocker.patch.object(model, 'generate_membership_vectors', side_effect=fake_generate_membership_vectors)
+    mocker.patch.object(model, "generate_membership_vectors", side_effect=fake_generate_membership_vectors)
 
     with pytest.raises(IndexError, match="out of bounds"):
         model(batch)

@@ -64,7 +64,7 @@ class TestOnDiskTransductiveCollateTransforms:
             graph_data=small_graph,
             data_dir=Path(temp_dir) / "no_transforms",
             transforms_config=None,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         
@@ -81,13 +81,13 @@ class TestOnDiskTransductiveCollateTransforms:
         # Basic assertions
         assert batch.num_nodes == len(node_ids)
         assert batch.x.shape == (len(node_ids), 8)
-        assert hasattr(batch, 'edge_index')
+        assert hasattr(batch, "edge_index")
         
         # Should NOT have simplicial complex structures
         # (transforms create individual attributes like x_0, x_1, etc.)
-        assert not hasattr(batch, 'x_0'), "Should not have x_0 without transforms"
-        assert not hasattr(batch, 'hodge_laplacian_0'), "Should not have laplacians without transforms"
-        assert not hasattr(batch, 'incidence_1'), "Should not have incidences without transforms"
+        assert not hasattr(batch, "x_0"), "Should not have x_0 without transforms"
+        assert not hasattr(batch, "hodge_laplacian_0"), "Should not have laplacians without transforms"
+        assert not hasattr(batch, "incidence_1"), "Should not have incidences without transforms"
 
     def test_collate_with_transforms(self, small_graph, temp_dir, transforms_config):
         """Test collate function WITH transforms."""
@@ -96,7 +96,7 @@ class TestOnDiskTransductiveCollateTransforms:
             graph_data=small_graph,
             data_dir=Path(temp_dir) / "with_transforms",
             transforms_config=transforms_config,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         
@@ -116,16 +116,16 @@ class TestOnDiskTransductiveCollateTransforms:
         # Basic assertions
         assert batch.num_nodes == len(node_ids)
         assert batch.x.shape == (len(node_ids), 8)
-        assert hasattr(batch, 'edge_index')
+        assert hasattr(batch, "edge_index")
         
         # SHOULD have simplicial complex structures after transform
         # (transforms create individual attributes: x_0, x_1, etc.)
-        assert hasattr(batch, 'x_0'), "Should have x_0 after transforms"
-        assert hasattr(batch, 'x_1'), "Should have x_1 after transforms"
-        assert hasattr(batch, 'incidence_1'), "Should have incidence_1 after transforms"
+        assert hasattr(batch, "x_0"), "Should have x_0 after transforms"
+        assert hasattr(batch, "x_1"), "Should have x_1 after transforms"
+        assert hasattr(batch, "incidence_1"), "Should have incidence_1 after transforms"
         
         # Verify laplacians exist
-        assert hasattr(batch, 'hodge_laplacian_0') or hasattr(batch, 'down_laplacian_1'), \
+        assert hasattr(batch, "hodge_laplacian_0") or hasattr(batch, "down_laplacian_1"), \
             "Should have laplacian matrices after transforms"
         
         # Verify dimensions
@@ -139,7 +139,7 @@ class TestOnDiskTransductiveCollateTransforms:
             graph_data=small_graph,
             data_dir=Path(temp_dir) / "multi_batch",
             transforms_config=transforms_config,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         
@@ -156,9 +156,9 @@ class TestOnDiskTransductiveCollateTransforms:
         
         # All batches should have simplicial complex structures
         for i, batch in enumerate([batch1, batch2, batch3], 1):
-            assert hasattr(batch, 'x_0'), f"Batch {i} should have x_0"
-            assert hasattr(batch, 'x_1'), f"Batch {i} should have x_1"
-            assert hasattr(batch, 'incidence_1'), f"Batch {i} should have incidence_1"
+            assert hasattr(batch, "x_0"), f"Batch {i} should have x_0"
+            assert hasattr(batch, "x_1"), f"Batch {i} should have x_1"
+            assert hasattr(batch, "incidence_1"), f"Batch {i} should have incidence_1"
 
     def test_transform_preserves_features(self, small_graph, temp_dir, transforms_config):
         """Test that transforms preserve node features."""
@@ -166,7 +166,7 @@ class TestOnDiskTransductiveCollateTransforms:
             graph_data=small_graph,
             data_dir=Path(temp_dir) / "preserve_features",
             transforms_config=transforms_config,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         
@@ -180,7 +180,7 @@ class TestOnDiskTransductiveCollateTransforms:
         batch = collate_fn([node_ids])
         
         # Original features should be preserved in x_0
-        assert hasattr(batch, 'x_0')
+        assert hasattr(batch, "x_0")
         original_features = batch.x_0
         
         # Should match the original features from graph
@@ -206,7 +206,7 @@ class TestOnDiskTransductiveCollateTransforms:
             graph_data=data,
             data_dir=Path(temp_dir) / "no_structures",
             transforms_config=transforms_config,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         
@@ -219,9 +219,9 @@ class TestOnDiskTransductiveCollateTransforms:
         batch = collate_fn([[0, 1, 2]])
         
         # Transform should still work even with no triangles
-        assert hasattr(batch, 'x_0'), "Should have x_0 even without structures"
-        assert hasattr(batch, 'x_1'), "Should have x_1 even without structures"
-        assert hasattr(batch, 'incidence_1'), "Should have incidence_1"
+        assert hasattr(batch, "x_0"), "Should have x_0 even without structures"
+        assert hasattr(batch, "x_1"), "Should have x_1 even without structures"
+        assert hasattr(batch, "incidence_1"), "Should have incidence_1"
 
     def test_transform_config_types(self, small_graph, temp_dir):
         """Test different transform configuration formats."""
@@ -240,7 +240,7 @@ class TestOnDiskTransductiveCollateTransforms:
             graph_data=small_graph,
             data_dir=Path(temp_dir) / "nested_config",
             transforms_config=nested_config,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         
@@ -254,8 +254,8 @@ class TestOnDiskTransductiveCollateTransforms:
         
         # Query batch
         batch = collate_fn([[0, 1, 2]])
-        assert hasattr(batch, 'x_0'), "Should work with nested config"
-        assert hasattr(batch, 'x_1'), "Should have x_1 with nested config"
+        assert hasattr(batch, "x_0"), "Should work with nested config"
+        assert hasattr(batch, "x_1"), "Should have x_1 with nested config"
 
 
 if __name__ == "__main__":

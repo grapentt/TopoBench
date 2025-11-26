@@ -1,10 +1,10 @@
 """Test MLP."""
-import torch
-import torch.nn as nn
-import torch_geometric
 import pytest
+import torch
+import torch_geometric
+
 from topobench.nn.backbones.non_relational.mlp import MLP
-from omegaconf import DictConfig
+
 
 @pytest.mark.parametrize("batch_size,num_nodes,in_channels,hidden_layers,out_channels,final_act", [
     (1, 4, 10, [16, 8], 8, "sigmoid"),

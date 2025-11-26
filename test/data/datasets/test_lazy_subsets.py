@@ -9,8 +9,8 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
-from topobench.data.datasets._lazy import LazySubset
 from topobench.data.datasets import GeneratedInductiveDataset
+from topobench.data.datasets._lazy import LazySubset
 
 
 class SimpleGeneratedDataset(GeneratedInductiveDataset):

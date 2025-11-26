@@ -1,6 +1,7 @@
 """Test the TBEvaluator class."""
 import pytest
 import torch
+
 from topobench.evaluator import TBEvaluator
 
 
@@ -11,14 +12,14 @@ class TestTBEvaluator:
         """Setup the test."""
         self.classification_metrics = ["accuracy", "precision", "recall", "auroc"]
         self.evaluator_classification = TBEvaluator(
-            task="classification", 
-            num_classes=3, 
+            task="classification",
+            num_classes=3,
             metrics=self.classification_metrics
         )
         self.regression_metrics = ["example", "mae", "mse", "rmse", "r2"]
         self.evaluator_regression = TBEvaluator(
-            task="regression", 
-            num_classes=1, 
+            task="regression",
+            num_classes=1,
             metrics=self.regression_metrics
         )
 

@@ -182,7 +182,7 @@ for config_name, config in GRAPH_CONFIGS.items():
         ondisk = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(index_dir),
-            max_structure_size=3,
+            max_clique_size=3,
             force_rebuild=True,
         )
         

@@ -7,8 +7,9 @@ including initialization, data transformations, split loading, and edge cases.
 import json
 import os
 import tempfile
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, mock_open
 import torch
 import torch_geometric.data
 from omegaconf import DictConfig
@@ -73,7 +74,7 @@ class TestPreProcessorBasic:
                     preprocessor = PreProcessor(mock_dataset, tmpdir, None)
                     
                     assert preprocessor.transforms_applied == False
-                    assert hasattr(preprocessor, 'data_list')
+                    assert hasattr(preprocessor, "data_list")
 
     def test_init_preserves_split_idx(self):
         """Test that split_idx is preserved from dataset."""
@@ -214,7 +215,7 @@ class TestPreProcessorProcessing:
         mock_dataset = MockTorchDataset(mock_data)
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.dataset = mock_dataset
                 preprocessor.pre_transform = None
@@ -224,7 +225,7 @@ class TestPreProcessorProcessing:
                 preprocessor.save = MagicMock()
                 
                 # Mock the processed_paths property
-                with patch.object(type(preprocessor), 'processed_paths', new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
+                with patch.object(type(preprocessor), "processed_paths", new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
                     preprocessor.process()
                     
                     assert len(preprocessor.data_list) == len(mock_data)
@@ -236,7 +237,7 @@ class TestPreProcessorProcessing:
         mock_data = torch_geometric.data.Data(x=torch.randn(3, 4))
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.dataset = mock_data
                 preprocessor.pre_transform = None
@@ -246,7 +247,7 @@ class TestPreProcessorProcessing:
                 preprocessor.save = MagicMock()
                 
                 # Mock the processed_paths property
-                with patch.object(type(preprocessor), 'processed_paths', new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
+                with patch.object(type(preprocessor), "processed_paths", new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
                     preprocessor.process()
                     
                     assert preprocessor.data_list == [mock_data]
@@ -262,7 +263,7 @@ class TestPreProcessorProcessing:
         mock_pre_transform = MagicMock(side_effect=lambda x: x)
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.dataset = mock_dataset
                 preprocessor.pre_transform = mock_pre_transform
@@ -272,7 +273,7 @@ class TestPreProcessorProcessing:
                 preprocessor.save = MagicMock()
                 
                 # Mock the processed_paths property
-                with patch.object(type(preprocessor), 'processed_paths', new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
+                with patch.object(type(preprocessor), "processed_paths", new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
                     preprocessor.process()
                     
                     # Verify pre_transform was called for each data item
@@ -296,7 +297,7 @@ class TestPreProcessorLoad:
         mock_torch_load.return_value = (mock_data, mock_slices)
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.load("/fake/path")
                 
@@ -319,7 +320,7 @@ class TestPreProcessorLoad:
         mock_torch_load.return_value = (mock_data, mock_slices, mock_data_cls)
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.load("/fake/path")
                 
@@ -342,7 +343,7 @@ class TestPreProcessorLoad:
         mock_torch_load.return_value = (mock_data, mock_slices, mock_sizes, mock_data_cls)
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.load("/fake/path")
                 
@@ -359,7 +360,7 @@ class TestPreProcessorLoad:
             Mock of the torch_load function.
         """
         mock_data_dict = {
-            "x": torch.randn(3, 4), 
+            "x": torch.randn(3, 4),
             "edge_index": torch.tensor([[0, 1], [1, 2]])
         }
         mock_slices = {"x": torch.tensor([0, 3])}
@@ -369,7 +370,7 @@ class TestPreProcessorLoad:
         mock_torch_load.return_value = (mock_data_dict, mock_slices, mock_data_cls)
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.load("/fake/path")
                 
@@ -384,7 +385,7 @@ class TestPreProcessorTransforms:
     def test_save_transform_parameters_new_file(self):
         """Test saving transform parameters when file doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.processed_data_dir = tmpdir
                 preprocessor.transforms_parameters = {
@@ -400,7 +401,7 @@ class TestPreProcessorTransforms:
                 assert os.path.exists(param_file)
                 
                 # Check file contents
-                with open(param_file, 'r') as f:
+                with open(param_file) as f:
                     saved_params = json.load(f)
                 assert saved_params == preprocessor.transforms_parameters
 
@@ -418,10 +419,10 @@ class TestPreProcessorTransforms:
             param_file = os.path.join(
                 tmpdir, "path_transform_parameters_dict.json"
             )
-            with open(param_file, 'w') as f:
+            with open(param_file, "w") as f:
                 json.dump(params, f)
             
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.processed_data_dir = tmpdir
                 preprocessor.transforms_parameters = params
@@ -440,10 +441,10 @@ class TestPreProcessorTransforms:
             param_file = os.path.join(
                 tmpdir, "path_transform_parameters_dict.json"
             )
-            with open(param_file, 'w') as f:
+            with open(param_file, "w") as f:
                 json.dump(existing_params, f)
             
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.processed_data_dir = tmpdir
                 preprocessor.transforms_parameters = {
@@ -468,7 +469,7 @@ class TestPreProcessorTransforms:
         
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create preprocessor instance
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 
                 # Mock DataTransform to avoid needing real transforms
@@ -481,7 +482,7 @@ class TestPreProcessorTransforms:
                     )
                     
                     # Check that a Compose object was created
-                    assert hasattr(pre_transform, '__call__')
+                    assert hasattr(pre_transform, "__call__")
 
     def test_instantiate_pre_transform_multiple_transforms(self):
         """Test instantiate_pre_transform with multiple transforms (else branch)."""
@@ -491,7 +492,7 @@ class TestPreProcessorTransforms:
         })
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 
                 # Mock DataTransform
@@ -507,7 +508,7 @@ class TestPreProcessorTransforms:
                     
                     # DataTransform should be called for each transform
                     assert mock_dt.call_count == 2
-                    assert hasattr(pre_transform, '__call__')
+                    assert hasattr(pre_transform, "__call__")
 
     def test_instantiate_pre_transform_single_transform(self):
         """Test instantiate_pre_transform with single transform (if branch)."""
@@ -518,7 +519,7 @@ class TestPreProcessorTransforms:
         })
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 
                 # Mock DataTransform
@@ -541,7 +542,7 @@ class TestPreProcessorTransforms:
                     
                     # Verify the pre_transform is a Compose object
                     assert isinstance(
-                        pre_transform, 
+                        pre_transform,
                         torch_geometric.transforms.Compose
                     )
 
@@ -552,7 +553,7 @@ class TestPreProcessorTransforms:
         })
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 
                 with patch("topobench.data.preprocessor.preprocessor.DataTransform") as mock_dt:
@@ -577,7 +578,7 @@ class TestPreProcessorTransforms:
         })
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 
                 with patch("topobench.data.preprocessor.preprocessor.DataTransform") as mock_dt:
@@ -590,14 +591,14 @@ class TestPreProcessorTransforms:
                     
                     # Check it's a Compose instance
                     assert isinstance(
-                        pre_transform, 
+                        pre_transform,
                         torch_geometric.transforms.Compose
                     )
 
     def test_instantiate_pre_transform_single_vs_multiple(self):
         """Test that the method correctly distinguishes between single and multiple transforms."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.set_processed_data_dir = MagicMock()
                 
@@ -639,7 +640,7 @@ class TestPreProcessorEdgeCases:
         mock_dataset = MockTorchDataset([])
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.dataset = mock_dataset
                 preprocessor.pre_transform = None
@@ -650,7 +651,7 @@ class TestPreProcessorEdgeCases:
                 preprocessor.save = MagicMock()
                 
                 # Mock the processed_paths property
-                with patch.object(type(preprocessor), 'processed_paths', new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
+                with patch.object(type(preprocessor), "processed_paths", new_callable=lambda: property(lambda self: [f"{tmpdir}/data.pt"])):
                     preprocessor.process()
                     
                     assert preprocessor.data_list == []
@@ -659,7 +660,7 @@ class TestPreProcessorEdgeCases:
         """Test the processed_dir property returns correct paths."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Without transforms
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.root = tmpdir
                 preprocessor.transforms_applied = False
@@ -667,7 +668,7 @@ class TestPreProcessorEdgeCases:
                 assert preprocessor.processed_dir == tmpdir
             
             # With transforms
-            with patch.object(PreProcessor, '__init__', lambda self, *args, **kwargs: None):
+            with patch.object(PreProcessor, "__init__", lambda self, *args, **kwargs: None):
                 preprocessor = PreProcessor(None, tmpdir, None)
                 preprocessor.root = tmpdir
                 preprocessor.transforms_applied = True

@@ -1,8 +1,10 @@
 """Test the BestEpochMetricsCallback class."""
+from unittest.mock import Mock
+
 import pytest
 import torch
-from unittest.mock import MagicMock, Mock
 from lightning.pytorch.callbacks import ModelCheckpoint
+
 from topobench.callbacks import BestEpochMetricsCallback
 
 

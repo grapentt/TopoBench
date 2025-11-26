@@ -1,7 +1,9 @@
 """Class for automated testing of neural network topobench."""
 
-import torch
 import copy
+
+import torch
+
 
 class NNModuleAutoTest:
     r"""Test the neural network module.
@@ -179,5 +181,5 @@ class NNModuleAutoTest:
         i = 0
         for t in result:
             if isinstance(t, torch.Tensor):
-                assert t.shape == shapes[i] 
+                assert t.shape == shapes[i]
                 i += 1

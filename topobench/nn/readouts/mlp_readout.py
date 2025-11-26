@@ -130,5 +130,9 @@ class MLPReadout(MLPBackbone):
         """
         model_out = self.forward(model_out, batch)
         model_out["logits"] = model_out["x_0"]
+        
+        # Extract labels from batch
+        if hasattr(batch, "y") and batch.y is not None:
+            model_out["labels"] = batch.y
 
         return model_out

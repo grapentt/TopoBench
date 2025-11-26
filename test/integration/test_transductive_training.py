@@ -6,7 +6,6 @@ mini-batch training with on-demand structure querying.
 
 import pytest
 import torch
-from torch.utils.data import DataLoader
 from torch_geometric.data import Data
 
 from topobench.data.preprocessor.ondisk_transductive import (
@@ -65,7 +64,7 @@ class TestOnDiskTransductiveCollate:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_collate"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -86,7 +85,7 @@ class TestOnDiskTransductiveCollate:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_extract"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -101,7 +100,7 @@ class TestOnDiskTransductiveCollate:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_tensor"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -116,7 +115,7 @@ class TestOnDiskTransductiveCollate:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_edges"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -135,7 +134,7 @@ class TestOnDiskTransductiveCollate:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_masks"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -209,7 +208,7 @@ class TestMiniBatchTraining:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_dataloader"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -243,7 +242,7 @@ class TestMiniBatchTraining:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_memory"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -268,7 +267,7 @@ class TestMiniBatchTraining:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_structures"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -297,7 +296,7 @@ class TestConsistencyValidation:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_consistency"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -316,7 +315,7 @@ class TestConsistencyValidation:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_labels"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -338,7 +337,7 @@ class TestEdgeCases:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_empty"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -353,7 +352,7 @@ class TestEdgeCases:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_single"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -368,7 +367,7 @@ class TestEdgeCases:
         dataset = OnDiskTransductivePreprocessor(
             graph_data=small_graph,
             data_dir=str(tmp_path / "test_duplicates"),
-            max_structure_size=3,
+            max_clique_size=3,
         )
         dataset.build_index()
         
@@ -376,6 +375,6 @@ class TestEdgeCases:
         
         # Batch with duplicates - should deduplicate
         batch = collate_fn([[0, 1, 1, 2, 2]])
-        # Note: Current implementation doesn't deduplicate, 
+        # Note: Current implementation doesn't deduplicate,
         # but doesn't break either
         assert batch.num_nodes >= 3

@@ -5,7 +5,8 @@ used to index topological structures in transductive learning scenarios.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 
 class AbstractIndexBackend(ABC):
@@ -65,15 +66,15 @@ class AbstractIndexBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def insert(self, structure_id: int, nodes: list[int]) -> None:
-        """Insert a structure with its constituent nodes.
+    def insert(self, clique_id: int, nodes: list[int]) -> None:
+        """Insert a clique with its constituent nodes.
 
         Parameters
         ----------
-        structure_id : int
-            Unique identifier for the structure.
+        clique_id : int
+            Unique identifier for the clique.
         nodes : list of int
-            Node IDs that comprise this structure.
+            Node IDs that comprise this clique.
 
         Notes
         -----
@@ -83,14 +84,14 @@ class AbstractIndexBackend(ABC):
 
     @abstractmethod
     def insert_batch(
-        self, structures: Iterator[tuple[int, list[int]]]
+        self, cliques: Iterator[tuple[int, list[int]]]
     ) -> None:
-        """Insert multiple structures efficiently.
+        """Insert multiple cliques efficiently.
 
         Parameters
         ----------
-        structures : Iterator of (int, list of int)
-            Iterator yielding (structure_id, nodes) tuples.
+        cliques : Iterator of (int, list of int)
+            Iterator yielding (clique_id, nodes) tuples.
 
         Notes
         -----
@@ -126,13 +127,29 @@ class AbstractIndexBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def count_structures(self) -> int:
-        """Get total number of indexed structures.
+    def count_cliques(self) -> int:
+        """Get total number of indexed cliques.
 
         Returns
         -------
         int
-            Total structure count.
+            Total clique count.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_clique(self, clique_id: int) -> list[int] | None:
+        """Get nodes for a specific clique ID.
+
+        Parameters
+        ----------
+        clique_id : int
+            Clique ID to query.
+
+        Returns
+        -------
+        list of int or None
+            List of node IDs in the clique, or None if not found.
         """
         raise NotImplementedError
 

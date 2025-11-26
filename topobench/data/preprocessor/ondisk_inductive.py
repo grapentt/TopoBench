@@ -763,17 +763,30 @@ class OnDiskInductivePreprocessor(Dataset):
         if not uncached_indices:
             # All cached! Just load metadata
             self._load_metadata()
+            print(
+                f"[OnDiskInductivePreprocessor] All {len(self.transform_chain)} transform(s) cached, "
+                f"loading metadata only"
+            )
             return
 
         # Find last cached transform (our starting point)
         first_uncached_idx = uncached_indices[0]
+        num_cached = first_uncached_idx
+        num_uncached = len(uncached_indices)
 
         if first_uncached_idx == 0:
             # No cached transforms, process from scratch
+            print(
+                f"[OnDiskInductivePreprocessor] Processing {num_uncached} transform(s) from scratch"
+            )
             source_dataset = self.dataset
             source_transform = self.pre_transform
         else:
             # Load from last cached transform!
+            print(
+                f"[OnDiskInductivePreprocessor] Reusing {num_cached} cached transform(s), "
+                f"processing {num_uncached} new transform(s)"
+            )
             last_cached_idx = first_uncached_idx - 1
             cached_entry = self.transform_chain[last_cached_idx]
             cached_dir = Path(cached_entry["output_dir"])

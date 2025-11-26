@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import torch_geometric
     from omegaconf import DictConfig
 
-    from .ondisk_inductive import OnDiskInductivePreprocessor
+    from .ondisk_inductive import ODiskInductivePreprocessor
     from .ondisk_transductive import OnDiskTransductivePreprocessor
     from .preprocessor import PreProcessor
 
@@ -42,6 +42,13 @@ def _estimate_memory_requirement(
     
     This is a rough estimate based on graph statistics and target complex dimension.
     
+    TODO: Improve memory estimation accuracy. Current formula O(N × D^complex_dim)
+    is very conservative and overestimates for sparse graphs. Consider:
+    - Using actual edge counts instead of degree^dim
+    - Sampling a few graphs to measure actual memory usage
+    - Using transform-specific memory profiles
+    - Accounting for feature dimensions and data types
+    
     Parameters
     ----------
     dataset : torch_geometric.data.Dataset or torch.utils.data.Dataset
@@ -62,14 +69,13 @@ def _estimate_memory_requirement(
     - 4-cliques (dim=3): O(N × D³) × 12 bytes
     Where N = num_nodes or num_graphs, D = avg_degree
     """
-    import torch
     
     try:
         # Sample first graph to estimate
         sample = dataset[0]
         
-        if hasattr(sample, 'edge_index'):
-            num_nodes = sample.num_nodes if hasattr(sample, 'num_nodes') else sample.x.shape[0]
+        if hasattr(sample, "edge_index"):
+            num_nodes = sample.num_nodes if hasattr(sample, "num_nodes") else sample.x.shape[0]
             num_edges = sample.edge_index.shape[1]
             avg_degree = num_edges / num_nodes if num_nodes > 0 else 0
             
@@ -150,9 +156,9 @@ def create_preprocessor(
     data_dir: str | Path,
     transforms_config: DictConfig | None = None,
     mode: Literal["auto", "inmemory", "ondisk"] = "auto",
-    available_ram_gb: float | None = None,
     force_reload: bool = False,
     num_workers: int | None = None,
+    available_ram_gb: float | None = None,
     storage_backend: str = "mmap",
     compression: str | None = "lz4",
     batch_size: int = 32,
@@ -180,6 +186,12 @@ def create_preprocessor(
         - "inmemory": Force in-memory preprocessing (standard PreProcessor)
         - "ondisk": Force on-disk preprocessing (OnDiskInductivePreprocessor)
         Default: "auto".
+    force_reload : bool, optional
+        Whether to force reprocessing even if cache exists.
+        Default: False.
+    num_workers : int, optional
+        Number of workers for parallel processing (ondisk mode only).
+        Default: None (uses CPU count).
     available_ram_gb : float, optional
         Available RAM in GB for auto mode. If None, automatically detected.
         Default: None.
@@ -206,7 +218,7 @@ def create_preprocessor(
     
     Returns
     -------
-    PreProcessor or OnDiskInductivePreprocessor or OnDiskTransductivePreprocessor
+    PreProcessor or OnDiskInductivePreprocessor
         Appropriate preprocessor instance based on dataset and mode.
     
     Examples
@@ -227,7 +239,8 @@ def create_preprocessor(
     ...     dataset=large_dataset,
     ...     data_dir="./data",
     ...     transforms_config=config,
-    ...     mode="ondisk"  # Always use on-disk
+    ...     mode="ondisk",
+    ...     num_workers=8
     ... )
     >>>
     >>> # Use like any preprocessor
@@ -236,7 +249,6 @@ def create_preprocessor(
     Notes
     -----
     - For inductive datasets (many graphs), uses OnDiskInductivePreprocessor
-    - For transductive datasets (single graph), uses OnDiskTransductivePreprocessor
     - In-memory mode uses standard PreProcessor (current TopoBench default)
     - Auto mode estimates memory requirements and chooses appropriately
     
@@ -244,16 +256,14 @@ def create_preprocessor(
     --------
     PreProcessor : Standard in-memory preprocessor
     OnDiskInductivePreprocessor : On-disk preprocessor for inductive learning
-    OnDiskTransductivePreprocessor : On-disk preprocessor for transductive learning
     """
     from .ondisk_inductive import OnDiskInductivePreprocessor
-    from .ondisk_transductive import OnDiskTransductivePreprocessor
     from .preprocessor import PreProcessor
     
     # Determine if on-disk should be used
     use_ondisk = _should_use_ondisk(
         dataset, mode, available_ram_gb,
-        complex_dim=transforms_config.get("complex_dim", 2) if transforms_config else 2
+        complex_dim=2  # Default complex dimension for estimation
     )
     
     if not use_ondisk:
@@ -273,7 +283,7 @@ def create_preprocessor(
         
         return PreProcessor(dataset, data_dir, transforms_config, **inmemory_kwargs)
     
-    # Use on-disk preprocessing
+    # Use on-disk preprocessing (inductive only for now)
     is_transductive = _is_transductive(dataset)
     
     if is_transductive:

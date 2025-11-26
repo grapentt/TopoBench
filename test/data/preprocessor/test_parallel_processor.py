@@ -255,14 +255,14 @@ class TestParallelProcessor:
                 dataset=dataset,
                 transform=transform,
                 output_dir=output_dir_par,
-                num_samples=200,
+                num_samples=500,
             )
             time_par = time.time() - start
 
-            assert results_seq["success"] == 200
-            assert results_par["success"] == 200
+            assert results_seq["success"] == 500
+            assert results_par["success"] == 500
 
-            for idx in range(200):
+            for idx in range(500):
                 data_seq = torch.load(output_dir_seq / f"sample_{idx:06d}.pt")
                 data_par = torch.load(output_dir_par / f"sample_{idx:06d}.pt")
                 assert data_seq.y.item() == data_par.y.item()

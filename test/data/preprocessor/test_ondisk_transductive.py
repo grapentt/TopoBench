@@ -33,7 +33,7 @@ def small_graph_data():
     - Node features and labels
     """
     # Create a graph with triangles: 0-1-2-0, 3-4-5-3, plus connections
-    edge_index = torch.tensor( # weird linter rule...
+    edge_index = torch.tensor(  # weird linter rule...
         [
             [
                 0,
@@ -157,7 +157,7 @@ def preprocessor(small_graph_data, temp_index_dir):
     return OnDiskTransductivePreprocessor(
         graph_data=small_graph_data,
         data_dir=temp_index_dir,
-        max_structure_size=3,
+        max_clique_size=3,
     )
 
 
@@ -187,7 +187,7 @@ class TestTransductivePreprocessorBasics:
         prep1 = OnDiskTransductivePreprocessor(
             graph_data=small_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         prep1.build_index()
         num_structures = prep1.num_structures
@@ -197,7 +197,7 @@ class TestTransductivePreprocessorBasics:
         prep2 = OnDiskTransductivePreprocessor(
             graph_data=small_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         prep2.build_index()
         assert prep2.num_structures == num_structures
@@ -293,7 +293,7 @@ class TestHighLevelSplitAPI:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=small_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
 
         split_config = OmegaConf.create(
@@ -327,7 +327,7 @@ class TestHighLevelSplitAPI:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=small_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
 
         split_config = OmegaConf.create(
@@ -369,7 +369,7 @@ class TestHighLevelSplitAPI:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
 
         split_config = OmegaConf.create(
@@ -395,7 +395,7 @@ class TestHighLevelSplitAPI:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=small_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
 
         assert not preprocessor._index_built
@@ -415,7 +415,7 @@ class TestHighLevelSplitAPI:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=small_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
 
         split_config = OmegaConf.create(
@@ -484,7 +484,7 @@ class TestEdgeCases:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=graph_data,
             data_dir=temp_index_dir / "disconnected",
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         assert preprocessor.num_structures > 0
@@ -506,7 +506,7 @@ class TestEdgeCases:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=graph_data,
             data_dir=temp_index_dir / "isolated",
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         assert preprocessor.query_batch([3], fully_contained=True) == []
@@ -529,7 +529,7 @@ class TestEdgeCases:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=graph_data,
             data_dir=temp_index_dir / "complete",
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
         assert preprocessor.num_structures == 10  # K5 has 10 triangles
@@ -546,7 +546,7 @@ class TestTrainingUsage:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=karate_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
 
@@ -587,7 +587,7 @@ class TestTrainingUsage:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=karate_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
 
         split_config = OmegaConf.create(
@@ -656,7 +656,7 @@ class TestLiftings:
             graph_data=small_graph_data,
             data_dir=temp_index_dir,
             transforms_config=transforms_config,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
 
@@ -751,7 +751,7 @@ class TestMemoryEfficiency:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=memory_test_graph,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
         preprocessor.build_index()
 
@@ -824,7 +824,7 @@ class TestIntegrationWithLoaders:
         preprocessor = OnDiskTransductivePreprocessor(
             graph_data=karate_graph_data,
             data_dir=temp_index_dir,
-            max_structure_size=3,
+            max_clique_size=3,
         )
 
         # Test structure-centric

@@ -5,14 +5,14 @@ PreProcessor when applying TopoBench transforms (liftings).
 """
 
 import pytest
-import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Data
 from torch_geometric.datasets import TUDataset
 
 from topobench.data.preprocessor import create_preprocessor
-from topobench.data.preprocessor.ondisk_inductive import OnDiskInductivePreprocessor
-from topobench.data.preprocessor.preprocessor import PreProcessor
+from topobench.data.preprocessor.ondisk_inductive import (
+    OnDiskInductivePreprocessor,
+)
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ class TestSimplicialCliqueLifting:
             sample = ondisk[i]
             assert isinstance(sample, Data)
             # Should have lifted structures
-            assert hasattr(sample, 'x_0') or hasattr(sample, 'x_1') or hasattr(sample, 'x_2')
+            assert hasattr(sample, "x_0") or hasattr(sample, "x_1") or hasattr(sample, "x_2")
 
     def test_simplicial_vs_inmemory_consistency(self, mutag_dataset, tmp_path):
         """Test on-disk produces same structures as in-memory for small dataset."""
@@ -106,11 +106,11 @@ class TestSimplicialCliqueLifting:
         inmemory_sample = inmemory[0]
         
         # Both should have x_0 (node features)
-        assert hasattr(ondisk_sample, 'x_0')
-        assert hasattr(inmemory_sample, 'x_0')
+        assert hasattr(ondisk_sample, "x_0")
+        assert hasattr(inmemory_sample, "x_0")
         
         # Node features should match
-        if hasattr(ondisk_sample, 'x_0') and hasattr(inmemory_sample, 'x_0'):
+        if hasattr(ondisk_sample, "x_0") and hasattr(inmemory_sample, "x_0"):
             assert ondisk_sample.x_0.shape == inmemory_sample.x_0.shape
 
     def test_different_complex_dimensions(self, mutag_dataset, tmp_path):

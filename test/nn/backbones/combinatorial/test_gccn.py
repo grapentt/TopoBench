@@ -2,11 +2,17 @@
 
 import pytest
 import torch
-from torch_geometric.data import Data
-from test._utils.nn_module_auto_test import NNModuleAutoTest
-from topobench.nn.backbones.combinatorial.gccn import TopoTune, interrank_boundary_index, get_activation
-from torch_geometric.nn import GCNConv
 from omegaconf import OmegaConf
+from torch_geometric.data import Data
+from torch_geometric.nn import GCNConv
+
+from test._utils.nn_module_auto_test import NNModuleAutoTest
+from topobench.nn.backbones.combinatorial.gccn import (
+    TopoTune,
+    get_activation,
+    interrank_boundary_index,
+)
+
 
 class MockGNN(torch.nn.Module):
     """Mock GNN module for testing purposes.
@@ -100,7 +106,7 @@ def create_mock_complex_batch():
     ).coalesce()
     batch["up_adjacency-2"] = adjacency_2
 
-    cell_statistics = torch.tensor([[3, 3, 1]]) 
+    cell_statistics = torch.tensor([[3, 3, 1]])
     batch["cell_statistics"] = cell_statistics
     return batch
 
@@ -191,7 +197,7 @@ def test_topotune_methods():
 
     # Test intrarank_gnn_forward
     output = topotune.intrarank_gnn_forward(expanded, 0, 0)
-    assert output.shape == (3, 16) 
+    assert output.shape == (3, 16)
 
     # Test interrank_expand
     membership = topotune.generate_membership_vectors(batch)
@@ -202,7 +208,7 @@ def test_topotune_methods():
 
     # Test interrank_gnn_forward
     output = topotune.interrank_gnn_forward(expanded, 0, 0, 3)
-    assert output.shape == (3, 16)  
+    assert output.shape == (3, 16)
 
     # Test aggregate_inter_nbhd
     x_out_per_route = {0: torch.randn(3, 16), 1: torch.randn(3, 16)}

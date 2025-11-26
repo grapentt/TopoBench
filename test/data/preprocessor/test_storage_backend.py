@@ -12,7 +12,9 @@ from pathlib import Path
 import torch
 from torch_geometric.data import Data
 
-from topobench.data.preprocessor._ondisk.storage_backend import MemoryMappedStorage
+from topobench.data.preprocessor._ondisk.storage_backend import (
+    MemoryMappedStorage,
+)
 
 
 def create_test_sample(idx: int, size: str = "small") -> Data:
@@ -161,4 +163,4 @@ class TestMemoryMappedStorage:
         print(f"  ZSTD: {results['zstd']['compression_ratio']:.2f}x compression, "
               f"{results['zstd']['total_size_mb']:.1f} MB")
         print(f"  ZSTD saves {results['lz4']['total_size_mb'] - results['zstd']['total_size_mb']:.1f} MB more")
-        print(f"  But LZ4 is faster for training (30-80% faster decompression)\n")
+        print("  But LZ4 is faster for training (30-80% faster decompression)\n")

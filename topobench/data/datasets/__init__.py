@@ -25,6 +25,9 @@ from .base_inductive import (
     GeneratedInductiveDataset,
 )
 
+# Import transductive split wrapper
+from .transductive_split import TransductiveSplitDataset
+
 
 class DatasetManager:
     """Manages automatic discovery and registration of dataset classes."""
@@ -145,6 +148,8 @@ __all__ = [
     "BaseOnDiskInductiveDataset",
     "FileBasedInductiveDataset",
     "GeneratedInductiveDataset",
+    # Transductive split wrapper
+    "TransductiveSplitDataset",
     # Lazy splits for O(1) memory usage
     "LazySubset",
     "LazyDataloadDataset",

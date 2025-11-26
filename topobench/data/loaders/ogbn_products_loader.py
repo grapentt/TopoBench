@@ -6,7 +6,6 @@ product co-purchasing network from Amazon with 2.4M nodes and 61M edges.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
@@ -116,8 +115,8 @@ class OGBNProductsLoader(AbstractLoader):
             
             def patched_load(*args, **kwargs):
                 # Force weights_only=False for OGB compatibility
-                if 'weights_only' not in kwargs:
-                    kwargs['weights_only'] = False
+                if "weights_only" not in kwargs:
+                    kwargs["weights_only"] = False
                 return original_load(*args, **kwargs)
             
             torch.load = patched_load

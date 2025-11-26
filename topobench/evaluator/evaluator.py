@@ -1,5 +1,6 @@
 """This module contains the Evaluator class that is responsible for computing the metrics."""
 
+import torch
 from torchmetrics import MetricCollection
 
 from topobench.evaluator import METRICS, AbstractEvaluator
@@ -96,21 +97,19 @@ class TBEvaluator(AbstractEvaluator):
             self.metrics.update(preds, target)
 
         elif self.task == "multilabel classification":
-            # For multilabel: convert logits to binary predictions
-            # Apply sigmoid + threshold at 0.5
-            import torch
-            preds_binary = (torch.sigmoid(preds) > 0.5).int()
+            # Get probabilities from logits (for AUROC and other metrics)
+            preds_prob = torch.sigmoid(preds)
             
-            # Handle NaN values in target (common in multilabel datasets)
-            # Only compute metrics on non-NaN labels
+            # Create mask for valid (non-NaN) labels
             mask = ~torch.isnan(target)
+            
+            # Only update metrics where we have valid labels
             if mask.any():
-                # Replace NaN with 0 for computation (will be masked anyway)
-                target_masked = torch.where(mask, target, torch.zeros_like(target)).int()
-                # torchmetrics expects int for multilabel
-                self.metrics.update(preds_binary, target_masked)
-            # If all labels are NaN, skip this batch
-
+                # Replace NaN with 0 (will be masked out by metrics internally)
+                target_clean = torch.where(mask, target, torch.zeros_like(target)).long()
+                # Update metrics with probabilities (not binary) and targets
+                # Note: Metrics like AUROC need probabilities, not binary predictions
+                self.metrics.update(preds_prob, target_clean)
 
         else:
             raise ValueError(f"Invalid task {self.task}")

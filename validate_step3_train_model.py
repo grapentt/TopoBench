@@ -122,7 +122,7 @@ def train_with_ondisk(nodes=12000, avg_degree=25, n_epochs=5, seed=42):
         dataset = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(data_dir),
-            max_structure_size=3,
+            max_clique_size=3,
             force_rebuild=True,
         )
         dataset.build_index()
@@ -131,7 +131,7 @@ def train_with_ondisk(nodes=12000, avg_degree=25, n_epochs=5, seed=42):
         dataset = OnDiskTransductivePreprocessor(
             graph_data=data,
             data_dir=str(data_dir),
-            max_structure_size=3,
+            max_clique_size=3,
             force_rebuild=False,
         )
         dataset.build_index()  # Loads existing

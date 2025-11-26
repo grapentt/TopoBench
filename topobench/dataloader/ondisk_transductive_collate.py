@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import torch
 import torch_geometric
 from omegaconf import DictConfig
-from torch_geometric.data import Batch, Data
+from torch_geometric.data import Data
 
 from topobench.transforms.data_transform import DataTransform
 
@@ -42,34 +42,6 @@ class OnDiskTransductiveCollate:
         If True, only return structures where ALL nodes are in the batch.
         If False, return structures with ANY node in the batch.
         Default: True (recommended for correctness).
-
-    Examples
-    --------
-    >>> from torch.utils.data import DataLoader
-    >>> from topobench.data.preprocessor import OnDiskTransductiveDataset
-    >>> from topobench.dataloader import OnDiskTransductiveCollate
-    >>>
-    >>> # Create dataset
-    >>> trans_dataset = OnDiskTransductiveDataset(graph_data, data_dir)
-    >>> trans_dataset.build_index()
-    >>>
-    >>> # Create node sampler (your choice of sampling strategy)
-    >>> node_indices = list(range(trans_dataset.num_nodes))
-    >>> node_dataset = NodeIndexDataset(node_indices, batch_size=32)
-    >>>
-    >>> # Create dataloader with custom collate
-    >>> collate_fn = OnDiskTransductiveCollate(trans_dataset)
-    >>> dataloader = DataLoader(
-    ...     node_dataset,
-    ...     batch_size=1,  # batch_size handled by NodeIndexDataset
-    ...     collate_fn=collate_fn
-    ... )
-    >>>
-    >>> # Train loop
-    >>> for batch in dataloader:
-    ...     # batch contains only structures for sampled nodes
-    ...     loss = model(batch)
-    ...     loss.backward()
 
     Notes
     -----
@@ -456,12 +428,6 @@ class NodeBatchSampler:
     mask : torch.Tensor, optional
         Boolean mask indicating which nodes to sample (e.g., train_mask).
         If provided, only samples from masked nodes (default: None).
-
-    Examples
-    --------
-    >>> sampler = NodeBatchSampler(num_nodes=1000, batch_size=32, shuffle=True)
-    >>> for batch_nodes in sampler:
-    ...     print(f"Batch size: {len(batch_nodes)}")
     """
 
     def __init__(

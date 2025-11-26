@@ -1,9 +1,6 @@
 """Test pipeline for a particular dataset and model."""
 
-from omegaconf import OmegaConf
 import hydra
-from lightning import Callback, Trainer
-from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf
 
 from topobench.data.preprocessor import PreProcessor
