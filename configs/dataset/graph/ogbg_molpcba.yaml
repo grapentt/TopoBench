@@ -1,0 +1,34 @@
+# Dataset loader config
+loader:
+  _target_: topobench.data.loaders.OGBGMolPCBALoader
+  parameters:
+    data_domain: graph
+    data_name: ogbg-molpcba
+    data_dir: ${paths.data_dir}/ogbg_molpcba
+    subset_size: 100
+    split: train
+    use_mock: true  # Safe for testing
+
+# Dataset parameters
+parameters:
+  num_features: 9
+  num_classes: 128
+  task: multilabel classification  # Multi-task multi-label (128 independent tasks)
+  loss_type: BCE  # BCEWithLogitsLoss for multi-label
+  monitor_metric: auroc  # Better for imbalanced multi-label
+  task_level: graph
+
+# Splits
+split_params:
+  learning_setting: inductive
+  data_split_dir: ${paths.data_dir}/data_splits/ogbg_molpcba
+  data_seed: 42
+  split_type: random
+  train_prop: 0.8
+  val_prop: 0.1
+
+# Dataloader parameters
+dataloader_params:
+  batch_size: 16
+  num_workers: 0
+  pin_memory: false

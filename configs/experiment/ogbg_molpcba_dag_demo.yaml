@@ -1,0 +1,53 @@
+# @package _global_
+
+# ogbg-molpcba: Transform DAG demo with topological lifting
+# Safe for testing on memory-constrained machines (uses mock dataset)
+
+defaults:
+  - override /dataset: graph/ogbg_molpcba
+  - override /model: simplicial/scn
+  - override /trainer: cpu
+
+experiment_name: ogbg_molpcba_dag
+seed: 42
+
+task_name: graph_classification
+
+# Update evaluator for multi-task binary classification
+evaluator:
+  metrics:
+    - auroc
+    - accuracy
+
+# On-disk preprocessing with Transform DAG
+preprocessor:
+  mode: inmemory  # Use inmemory for 100 samples (small enough)
+  data_dir: ./data/ogbg_molpcba/processed
+  force_reload: false
+  
+  transforms_config:
+    clique_lifting:
+      transform_type: lifting
+      transform_name: SimplicialCliqueLifting
+      complex_dim: 2
+    projection:
+      transform_type: feature
+      transform_name: ProjectionSum
+
+# Training
+trainer:
+  max_epochs: 1  # Just verify pipeline works
+  check_val_every_n_epoch: 1  # Validate every epoch
+  
+data:
+  batch_size: 16  # Small batch for testing
+
+# Disable problematic callbacks for initial test
+callbacks:
+  model_checkpoint:
+    monitor: val/auroc
+    mode: max
+  early_stopping:
+    monitor: val/auroc
+    mode: max
+    patience: 50
