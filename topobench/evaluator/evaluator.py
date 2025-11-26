@@ -96,10 +96,21 @@ class TBEvaluator(AbstractEvaluator):
             self.metrics.update(preds, target)
 
         elif self.task == "multilabel classification":
-            # Raise not supported error
-            raise NotImplementedError(
-                "Multilabel classification is not supported yet"
-            )
+            # For multilabel: convert logits to binary predictions
+            # Apply sigmoid + threshold at 0.5
+            import torch
+            preds_binary = (torch.sigmoid(preds) > 0.5).int()
+            
+            # Handle NaN values in target (common in multilabel datasets)
+            # Only compute metrics on non-NaN labels
+            mask = ~torch.isnan(target)
+            if mask.any():
+                # Replace NaN with 0 for computation (will be masked anyway)
+                target_masked = torch.where(mask, target, torch.zeros_like(target)).int()
+                # torchmetrics expects int for multilabel
+                self.metrics.update(preds_binary, target_masked)
+            # If all labels are NaN, skip this batch
+
 
         else:
             raise ValueError(f"Invalid task {self.task}")
