@@ -1,0 +1,69 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Benchmark Test Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+# This file let's you configure parameters for benchmarking our B1 (on disk inductive)
+# approach.
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 1. PARALLEL SPEEDUP BENCHMARK (--benchmarks speedup)
+# ───────────────────────────────────────────────────────────────────────────────
+# Measures: Preprocessing time with different numbers of parallel workers (1, 2, 4, ..., auto)
+# Purpose:  Demonstrates TopoBench's parallel architecture performance benefits
+# Process:  Applies SimplicialCliqueLifting to dataset with varying worker counts
+# Backend:  FILES (uncompressed) - enables clear measurement of parallel speedup
+#           Note: Mmap backend has compression bottleneck limiting speedup to ~2×
+# Training: NO - preprocessing only
+# Speed:    Fast (~1-2 minutes for 2 runs)
+# Expected: 3-4× speedup with 7 workers (files), ~2× with mmap (compression bottleneck)
+parallel:
+  dataset_size: 20000
+  # worker_counts auto-generated: [1, 2, 4, 8, ..., CPU_cores-1]
+  runs: 1
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 2. DAG CACHE REUSE BENCHMARK (--benchmarks dag)
+# ───────────────────────────────────────────────────────────────────────────────
+# Measures: Speedup from reusing cached intermediate transform results
+# Purpose:  Shows TopoBench's incremental transform caching innovation (key contribution!)
+# Process:  1) Apply base transform (SimplicialCliqueLifting)
+#           2) Add second transform (ProjectionSum) - should reuse cached results
+# Backend:  FILES (uncompressed) - shows true DAG cache benefit without compression overhead
+#           Trade-off: Files backend makes DAG speedup clearly visible (~3× for light extension)
+#                     Mmap backend: DAG cache works but speedup partially hidden by compression
+#                     (transform saved, but mmap conversion still required per new transform)
+# Training: NO - preprocessing only
+# Speed:    Fast (~1 minute for 2 runs)
+# Expected: Heavy extension ~2× light extension (both ProjectionSum transforms processed)
+dag_cache:
+  dataset_size: 20000
+  runs: 1
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 3. LIFTING MEMORY BENCHMARK (--benchmarks memory-lifting)
+# ───────────────────────────────────────────────────────────────────────────────
+# Measures: Memory usage during LIFTING preprocessing ONLY (no model, no training)
+# Purpose:  Demonstrates memory efficiency of on-disk vs in-memory preprocessing
+# Lifting:  Applies SimplicialCliqueLifting (graph → 2D simplicial complex)
+# Process:  In-memory:  Load all lifted samples into Python list (grows with size)
+#           On-disk:    Use OnDiskInductivePreprocessor + load 10 samples (constant)
+# Backend:  FILES for on-disk (backend choice doesn't affect memory profile)
+#           Trade-off: Memory efficiency same for both backends (streaming architecture)
+#                     Disk usage: Files ~70MB, Mmap ~15MB (4-5× compression)
+memory-lifting:
+  dataset_sizes: [1000, 2000, 4000]
+  runs: 1
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 4. FULL TRAINING MEMORY BENCHMARK (--benchmarks memory-full)
+# ───────────────────────────────────────────────────────────────────────────────
+# Measures: Memory usage during FULL TRAINING (lifting + SCCNN + PyTorch Lightning)
+# Purpose:  Shows memory efficiency during realistic training workloads
+# Lifting:  Applies SimplicialCliqueLifting (graph → 2D simplicial complex)
+# Process:  In-memory:  PreProcessor (all in RAM) + SCCNN training (1 epoch, batch=8)
+#           On-disk:    OnDiskInductivePreprocessor + SCCNN training (1 epoch, batch=8)
+# Backend:  FILES for on-disk (fast I/O during training, batch loading)
+#           Trade-off: Files = faster training I/O, Mmap = compressed storage + slightly slower I/O
+#           For training workloads: Files recommended for speed, Mmap for storage efficiency
+memory-full:
+  dataset_sizes: [500, 1000, 2000]
+  runs: 1

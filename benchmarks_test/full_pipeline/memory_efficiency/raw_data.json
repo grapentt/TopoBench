@@ -1,0 +1,55 @@
+{
+  "system_info": {
+    "platform": "Linux-6.16.8+kali-amd64-x86_64-with-glibc2.41",
+    "processor": "",
+    "python_version": "3.13.9",
+    "pytorch_version": "2.9.1+cu128",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "total_memory_gb": 31.08254623413086,
+    "cuda_available": false,
+    "cuda_device": null
+  },
+  "config": {
+    "dataset_sizes": [
+      500,
+      1000,
+      2000
+    ],
+    "runs": 2
+  },
+  "inmemory": [
+    {
+      "dataset_size": 500,
+      "peak_memory_mb": 934.296875,
+      "delta_memory_mb": 71.19140625
+    },
+    {
+      "dataset_size": 1000,
+      "peak_memory_mb": 996.6796875,
+      "delta_memory_mb": 61.2890625
+    },
+    {
+      "dataset_size": 2000,
+      "peak_memory_mb": 1119.1171875,
+      "delta_memory_mb": 122.4296875
+    }
+  ],
+  "ondisk": [
+    {
+      "dataset_size": 500,
+      "peak_memory_mb": 935.390625,
+      "delta_memory_mb": 1.09375
+    },
+    {
+      "dataset_size": 1000,
+      "peak_memory_mb": 996.6875,
+      "delta_memory_mb": 0.0078125
+    },
+    {
+      "dataset_size": 2000,
+      "peak_memory_mb": 1118.12109375,
+      "delta_memory_mb": -0.99609375
+    }
+  ]
+}

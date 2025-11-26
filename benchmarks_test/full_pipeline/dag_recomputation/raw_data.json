@@ -1,0 +1,62 @@
+{
+  "system_info": {
+    "platform": "Linux-6.16.8+kali-amd64-x86_64-with-glibc2.41",
+    "processor": "",
+    "python_version": "3.13.9",
+    "pytorch_version": "2.9.1+cu128",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "total_memory_gb": 31.08254623413086,
+    "cuda_available": false,
+    "cuda_device": null
+  },
+  "config": {
+    "dataset_size": 1000,
+    "runs": 2
+  },
+  "dataset_size": 1000,
+  "runs": 2,
+  "scenarios": {
+    "initial_build": {
+      "description": "Initial build (no cache)",
+      "mean_time": 10.89400463099446,
+      "std_time": 0.0272296700059087,
+      "raw_times": [
+        10.921234301000368,
+        10.86677496098855
+      ],
+      "speedup": 1.0
+    },
+    "no_change_cache_hit": {
+      "description": "No changes (cache hit)",
+      "mean_time": 0.0022083680087234825,
+      "std_time": 0.00019777000125031918,
+      "raw_times": [
+        0.0024061380099738017,
+        0.0020105980074731633
+      ],
+      "speedup": 4933.056713356209
+    },
+    "light_change": {
+      "description": "Add normalization (new config)",
+      "mean_time": 3.793850048496097,
+      "std_time": 3.7913912364965654,
+      "raw_times": [
+        7.585241284992662,
+        0.002458811999531463
+      ],
+      "speedup": 2.8714905680873977
+    },
+    "heavy_change": {
+      "description": "Change parameter (new config)",
+      "mean_time": 12.032421693496872,
+      "std_time": 0.21588076249463484,
+      "raw_times": [
+        12.248302455991507,
+        11.816540931002237
+      ],
+      "speedup": 0.905387536150126
+    }
+  },
+  "temp_dir": "/home/snorty/tdl/TopoBench/benchmark_tmp/bench_k0tpzucf"
+}

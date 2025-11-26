@@ -1,0 +1,30 @@
+{
+  "inmemory": [
+    {
+      "dataset_size": 100,
+      "peak_memory_mb": 877.37890625,
+      "delta_memory_mb": 13.59375,
+      "approach": "in-memory"
+    },
+    {
+      "dataset_size": 200,
+      "peak_memory_mb": 881.9140625,
+      "delta_memory_mb": 18.00390625,
+      "approach": "in-memory"
+    }
+  ],
+  "ondisk": [
+    {
+      "dataset_size": 100,
+      "peak_memory_mb": 891.3359375,
+      "delta_memory_mb": 27.57421875,
+      "approach": "on-disk"
+    },
+    {
+      "dataset_size": 200,
+      "peak_memory_mb": 889.98046875,
+      "delta_memory_mb": 26.2109375,
+      "approach": "on-disk"
+    }
+  ]
+}

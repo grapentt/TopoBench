@@ -1,0 +1,146 @@
+{
+  "parallel_speedup": {
+    "1": {
+      "num_workers": 1,
+      "time_seconds": 277.182404756546,
+      "samples_per_second": 72.1546521597081
+    },
+    "2": {
+      "num_workers": 2,
+      "time_seconds": 147.24063515663147,
+      "samples_per_second": 135.83206822440303
+    },
+    "4": {
+      "num_workers": 4,
+      "time_seconds": 98.92559552192688,
+      "samples_per_second": 202.1721465964488
+    },
+    "auto": {
+      "num_workers": 7,
+      "time_seconds": 84.55659461021423,
+      "samples_per_second": 236.52797386407573
+    }
+  },
+  "dataset_size": 20000,
+  "compression_info": {
+    "time_seconds": 251.31495714187622,
+    "compressed_size_mb": 148.30993270874023,
+    "compression_ratio": 4.4654836551426715
+  },
+  "note": "Benchmark uses files backend for true parallel speedup. For compression, use mmap with 1 worker (trade-off: slower but 4-5\u00d7 smaller).",
+  "dag_cache": {
+    "dataset_size": 20000,
+    "timings": {
+      "initial_build": 84.61195135116577,
+      "cache_hit": 0.0009059906005859375,
+      "light_extension": 28.594186067581177,
+      "heavy_extension": 56.74376678466797
+    },
+    "scenarios": {
+      "initial_build": {
+        "time": 84.61195135116577,
+        "speedup": 1.0,
+        "description": "Cold start"
+      },
+      "cache_hit": {
+        "time": 0.0009059906005859375,
+        "speedup": 93391.64368421053,
+        "description": "Exact reuse"
+      },
+      "light_extension": {
+        "time": 28.594186067581177,
+        "speedup": 2.9590613683211306,
+        "description": "Add 1 transform"
+      },
+      "heavy_extension": {
+        "time": 56.74376678466797,
+        "speedup": 1.4911232747775165,
+        "description": "Add 2 transforms"
+      }
+    }
+  },
+  "preprocessing_memory": {
+    "inmemory": [
+      {
+        "dataset_size": 1000,
+        "peak_memory_mb": 917.59765625,
+        "delta_memory_mb": 53.83984375,
+        "approach": "in-memory"
+      },
+      {
+        "dataset_size": 2000,
+        "peak_memory_mb": 962.3125,
+        "delta_memory_mb": 98.51953125,
+        "approach": "in-memory"
+      },
+      {
+        "dataset_size": 4000,
+        "peak_memory_mb": 1051.296875,
+        "delta_memory_mb": 187.65234375,
+        "approach": "in-memory"
+      }
+    ],
+    "ondisk": [
+      {
+        "dataset_size": 1000,
+        "peak_memory_mb": 867.19921875,
+        "delta_memory_mb": 3.53125,
+        "approach": "on-disk"
+      },
+      {
+        "dataset_size": 2000,
+        "peak_memory_mb": 867.62109375,
+        "delta_memory_mb": 3.921875,
+        "approach": "on-disk"
+      },
+      {
+        "dataset_size": 4000,
+        "peak_memory_mb": 867.921875,
+        "delta_memory_mb": 4.328125,
+        "approach": "on-disk"
+      }
+    ]
+  },
+  "training_memory": {
+    "inmemory": [
+      {
+        "dataset_size": 500,
+        "peak_memory_mb": 895.1875,
+        "delta_memory_mb": 31.484375,
+        "approach": "in-memory"
+      },
+      {
+        "dataset_size": 1000,
+        "peak_memory_mb": 917.65234375,
+        "delta_memory_mb": 53.875,
+        "approach": "in-memory"
+      },
+      {
+        "dataset_size": 2000,
+        "peak_memory_mb": 962.26953125,
+        "delta_memory_mb": 98.5234375,
+        "approach": "in-memory"
+      }
+    ],
+    "ondisk": [
+      {
+        "dataset_size": 500,
+        "peak_memory_mb": 894.44140625,
+        "delta_memory_mb": 30.7890625,
+        "approach": "on-disk"
+      },
+      {
+        "dataset_size": 1000,
+        "peak_memory_mb": 896.16015625,
+        "delta_memory_mb": 32.5546875,
+        "approach": "on-disk"
+      },
+      {
+        "dataset_size": 2000,
+        "peak_memory_mb": 902.0625,
+        "delta_memory_mb": 37.97265625,
+        "approach": "on-disk"
+      }
+    ]
+  }
+}

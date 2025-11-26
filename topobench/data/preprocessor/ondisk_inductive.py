@@ -765,31 +765,42 @@ class OnDiskInductivePreprocessor(Dataset):
             self._load_metadata()
             return
 
-        # Find last cached transform (our starting point)
-        first_uncached_idx = uncached_indices[0]
-
-        if first_uncached_idx == 0:
-            # No cached transforms, process from scratch
-            source_dataset = self.dataset
-            source_transform = self.pre_transform
-        else:
-            # Load from last cached transform!
-            last_cached_idx = first_uncached_idx - 1
-            cached_entry = self.transform_chain[last_cached_idx]
-            cached_dir = Path(cached_entry["output_dir"])
-
-            # Create dataset that loads from cached location
-            source_dataset = self._create_cached_dataset(cached_dir)
-
-            # Create transform for remaining uncached transforms
-            source_transform = self._create_partial_transform(
-                first_uncached_idx
-            )
-
-        # Process uncached transforms
-        self._process_samples_full(
-            source_dataset=source_dataset, source_transform=source_transform
-        )
+        # Process each uncached transform individually to maintain DAG structure
+        # Each transform writes to its own directory
+        dag = self.transform_pipeline.get_dag()
+        
+        for transform_idx in uncached_indices:
+            chain_entry = self.transform_chain[transform_idx]
+            transform_id = chain_entry["transform_id"]
+            output_dir = Path(chain_entry["output_dir"])
+            
+            # Determine source for this transform
+            if transform_idx == 0:
+                # First transform: use original dataset
+                source_dataset = self.dataset
+            else:
+                # Load from previous transform's output
+                prev_entry = self.transform_chain[transform_idx - 1]
+                prev_dir = Path(prev_entry["output_dir"])
+                source_dataset = self._create_cached_dataset(prev_dir)
+            
+            # Get single transform (not composed)
+            node = dag.nodes[transform_id]
+            source_transform = node.transform
+            
+            # Save original processed_dir and temporarily set to this transform's output
+            original_processed_dir = self.processed_dir
+            self.processed_dir = output_dir
+            
+            try:
+                # Process this transform only
+                self._process_samples_full(
+                    source_dataset=source_dataset, 
+                    source_transform=source_transform
+                )
+            finally:
+                # Restore original processed_dir
+                self.processed_dir = original_processed_dir
 
     def _create_cached_dataset(self, cached_dir: Path) -> Dataset:
         """Create dataset that loads from cached transform output.
@@ -898,6 +909,11 @@ class OnDiskInductivePreprocessor(Dataset):
         )
 
         transform_time = time_module.time() - transform_start
+
+        # DEBUG: Print processing results
+        print(f"[OnDiskInductivePreprocessor] Processing results: {results}")
+        if results["failed"] > 0:
+            print(f"[OnDiskInductivePreprocessor] Errors: {results['errors'][:3]}")  # Show first 3 errors
 
         # Save metadata
         self.num_samples = len(source_dataset)

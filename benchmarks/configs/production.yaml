@@ -1,0 +1,11 @@
+# Production-ready comprehensive benchmark configuration
+# Covers parallel speedup, DAG cache, and training memory
+
+parallel:
+  dataset_size: 2000  # Dataset for parallel speedup test
+
+dag_cache:
+  dataset_size: 2000  # Dataset for DAG cache test
+
+memory:
+  dataset_sizes: [1000, 3000, 6000, 10000]  # Datasets for memory efficiency

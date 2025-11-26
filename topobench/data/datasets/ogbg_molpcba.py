@@ -39,17 +39,32 @@ class OGBGMolPCBADataset(BaseOnDiskInductiveDataset):
         ogb_root = self._root / "ogb_raw"
         ogb_root.mkdir(parents=True, exist_ok=True)
         
-        # This downloads if needed, but we immediately get indices and discard
-        temp_dataset = PygGraphPropPredDataset(name="ogbg-molpcba", root=str(ogb_root))
-        split_idx = temp_dataset.get_idx_split()
-        self._indices = split_idx[split].tolist()
+        # Patch torch.load for PyTorch 2.6+ compatibility
+        # OGB uses pickle which requires weights_only=False
+        original_load = torch.load
         
-        if subset_size is not None:
-            self._indices = self._indices[:subset_size]
+        def patched_load(*args, **kwargs):
+            if 'weights_only' not in kwargs:
+                kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
         
-        # Store paths for on-demand loading (not the dataset itself!)
-        self._ogb_root = ogb_root
-        del temp_dataset  # Free memory immediately
+        torch.load = patched_load
+        
+        try:
+            # This downloads if needed, but we immediately get indices and discard
+            temp_dataset = PygGraphPropPredDataset(name="ogbg-molpcba", root=str(ogb_root))
+            split_idx = temp_dataset.get_idx_split()
+            self._indices = split_idx[split].tolist()
+            
+            if subset_size is not None:
+                self._indices = self._indices[:subset_size]
+            
+            # Store paths for on-demand loading (not the dataset itself!)
+            self._ogb_root = ogb_root
+            del temp_dataset  # Free memory immediately
+        finally:
+            # Restore original torch.load
+            torch.load = original_load
         
         super().__init__(root=root, cache_samples=cache_samples)
     
@@ -61,10 +76,31 @@ class OGBGMolPCBADataset(BaseOnDiskInductiveDataset):
         
         actual_idx = self._indices[idx]
         
-        # Load dataset on-demand (OGB caches to disk, this is lightweight)
-        temp_dataset = PygGraphPropPredDataset(name="ogbg-molpcba", root=str(self._ogb_root))
-        data = temp_dataset[actual_idx]
-        del temp_dataset  # Free memory
+        # Patch torch.load for PyTorch 2.6+ compatibility
+        original_load = torch.load
+        
+        def patched_load(*args, **kwargs):
+            if 'weights_only' not in kwargs:
+                kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
+        
+        torch.load = patched_load
+        
+        try:
+            # Load dataset on-demand (OGB caches to disk, this is lightweight)
+            temp_dataset = PygGraphPropPredDataset(name="ogbg-molpcba", root=str(self._ogb_root))
+            data = temp_dataset[actual_idx]
+            del temp_dataset  # Free memory
+        finally:
+            # Restore original torch.load
+            torch.load = original_load
+        
+        # Convert features to float (OGB uses integer encodings)
+        if hasattr(data, 'x') and data.x is not None:
+            data.x = data.x.float()
+        
+        if hasattr(data, 'edge_attr') and data.edge_attr is not None:
+            data.edge_attr = data.edge_attr.float()
         
         if data.y is not None:
             # OGB data is [1, num_tasks], keep it that way for proper batching
@@ -72,14 +108,17 @@ class OGBGMolPCBADataset(BaseOnDiskInductiveDataset):
         
         # OGB provides bidirectional edges, but SimplicalCliqueLifting
         # needs single-direction edges to avoid "duplicate nodes" error
-        # Filter to only keep edges where src < dst
+        # Filter to only keep edges where src < dst and mark as undirected
         if hasattr(data, "edge_index") and data.edge_index is not None:
-            mask = data.edge_index[0] < data.edge_index[1]
-            data.edge_index = data.edge_index[:, mask]
+            from torch_geometric.utils import is_undirected, to_undirected
             
-            # Also filter edge_attr if present
-            if hasattr(data, "edge_attr") and data.edge_attr is not None:
-                data.edge_attr = data.edge_attr[mask]
+            # If already undirected, nothing to do
+            if not is_undirected(data.edge_index, data.edge_attr if hasattr(data, "edge_attr") else None):
+                # Convert to undirected (this ensures proper structure)
+                if hasattr(data, "edge_attr") and data.edge_attr is not None:
+                    data.edge_index, data.edge_attr = to_undirected(data.edge_index, data.edge_attr)
+                else:
+                    data.edge_index = to_undirected(data.edge_index)
         
         return data
     

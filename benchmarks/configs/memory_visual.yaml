@@ -1,0 +1,6 @@
+# Memory efficiency visualization with larger datasets
+# Designed to show clear divergence in plots
+
+memory:
+  dataset_sizes: [1000, 3000, 6000, 10000]
+  runs: 1  # Single run for speed

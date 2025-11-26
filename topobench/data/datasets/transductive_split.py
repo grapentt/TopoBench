@@ -100,12 +100,23 @@ class TransductiveSplitDataset(Dataset):
         shuffle = self.split_config.get("shuffle", self.split_name == "train")
 
         # Create loader
+        # Instantiate transform from config if provided
+        transform = None
+        if hasattr(self.preprocessor, 'transforms_config') and self.preprocessor.transforms_config:
+            from topobench.transforms.liftings.graph2simplicial.clique_lifting import SimplicialCliqueLifting
+            lifting_config = self.preprocessor.transforms_config.get('lifting', {})
+            if lifting_config.get('lifting_id') == 'SimplicialCliqueLifting':
+                transform = SimplicialCliqueLifting(
+                    complex_dim=lifting_config.get('complex_dim', 2),
+                    feature_lifting=lifting_config.get('feature_lifting', 'ProjectionSum'),
+                )
+        
         self._loader = create_structure_centric_dataloader(
             self.preprocessor,
             cliques_per_batch=cliques_per_batch,
             node_budget=node_budget,
             shuffle=shuffle,
-            transform=self.preprocessor.transforms_config,
+            transform=transform,
         )
 
     def _create_extended_context_loader(self):
@@ -133,11 +144,22 @@ class TransductiveSplitDataset(Dataset):
         )
 
         # Create loader with extended context
+        # Instantiate transform from config if provided
+        transform = None
+        if hasattr(self.preprocessor, 'transforms_config') and self.preprocessor.transforms_config:
+            from topobench.transforms.liftings.graph2simplicial.clique_lifting import SimplicialCliqueLifting
+            lifting_config = self.preprocessor.transforms_config.get('lifting', {})
+            if lifting_config.get('lifting_id') == 'SimplicialCliqueLifting':
+                transform = SimplicialCliqueLifting(
+                    complex_dim=lifting_config.get('complex_dim', 2),
+                    feature_lifting=lifting_config.get('feature_lifting', 'ProjectionSum'),
+                )
+        
         self._loader = create_extended_context_dataloader(
             self.preprocessor,
             node_sampler=node_sampler,
             max_expansion_ratio=max_expansion_ratio,
-            transform=self.preprocessor.transforms_config,
+            transform=transform,
         )
 
     def __iter__(self):

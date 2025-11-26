@@ -11,28 +11,52 @@ defaults:
 experiment_name: ogbg_molpcba_dag
 seed: 42
 
-task_name: graph_classification
+task_name: multilabel_graph_classification
 
-# Update evaluator for multi-task binary classification
+# Dataset configuration
+dataset:
+  loader:
+    parameters:
+      use_mock: true  # Use mock data for quick testing
+      subset_size: 100
+      split: train
+
+# Update evaluator for multi-label classification (128 binary tasks)
 evaluator:
+  task: multilabel classification  # Critical: use multilabel not classification
+  num_classes: 128
   metrics:
-    - auroc
     - accuracy
+    - f1_macro  # Better for imbalanced multilabel tasks
 
-# On-disk preprocessing with Transform DAG
-preprocessor:
-  mode: inmemory  # Use inmemory for 100 samples (small enough)
-  data_dir: ./data/ogbg_molpcba/processed
-  force_reload: false
-  
-  transforms_config:
-    clique_lifting:
-      transform_type: lifting
-      transform_name: SimplicialCliqueLifting
-      complex_dim: 2
-    projection:
-      transform_type: feature
-      transform_name: ProjectionSum
+# Loss function for multi-label classification
+loss:
+  dataset_loss:
+    task: multilabel classification
+    loss_type: BCE  # BCEWithLogitsLoss for multilabel
+
+# Use transforms directly for small dataset
+transforms:
+  clique_lifting:
+    transform_type: lifting
+    transform_name: SimplicialCliqueLifting
+    complex_dim: 2
+  projection:
+    transform_type: feature
+    transform_name: ProjectionSum
+
+# Model configuration
+model:
+  feature_encoder:
+    in_channels: [9, 9, 9]  # Node features for each dimension
+    out_channels: 32
+  backbone:
+    in_channels_0: 32
+    in_channels_1: 32
+    in_channels_2: 32
+  readout:
+    hidden_dim: 32
+    out_channels: 128
 
 # Training
 trainer:
@@ -42,12 +66,12 @@ trainer:
 data:
   batch_size: 16  # Small batch for testing
 
-# Disable problematic callbacks for initial test
+# Callbacks for monitoring training
 callbacks:
   model_checkpoint:
-    monitor: val/auroc
+    monitor: val/f1_macro  # Monitor F1-macro (best for imbalanced multilabel)
     mode: max
   early_stopping:
-    monitor: val/auroc
+    monitor: val/f1_macro
     mode: max
-    patience: 50
+    patience: 10

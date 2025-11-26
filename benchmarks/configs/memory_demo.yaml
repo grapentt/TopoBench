@@ -1,0 +1,6 @@
+# Memory efficiency demonstration with larger datasets
+# Shows dramatic on-disk memory advantage
+
+memory:
+  dataset_sizes: [1000, 2000, 5000, 10000, 20000]
+  runs: 1  # Single run for speed

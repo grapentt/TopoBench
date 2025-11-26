@@ -1,0 +1,31 @@
+{
+  "parallel_speedup": {
+    "1": {
+      "num_workers": 1,
+      "time_seconds": 277.182404756546,
+      "samples_per_second": 72.1546521597081
+    },
+    "2": {
+      "num_workers": 2,
+      "time_seconds": 147.24063515663147,
+      "samples_per_second": 135.83206822440303
+    },
+    "4": {
+      "num_workers": 4,
+      "time_seconds": 98.92559552192688,
+      "samples_per_second": 202.1721465964488
+    },
+    "auto": {
+      "num_workers": 7,
+      "time_seconds": 84.55659461021423,
+      "samples_per_second": 236.52797386407573
+    }
+  },
+  "dataset_size": 20000,
+  "compression_info": {
+    "time_seconds": 251.31495714187622,
+    "compressed_size_mb": 148.30993270874023,
+    "compression_ratio": 4.4654836551426715
+  },
+  "note": "Benchmark uses files backend for true parallel speedup. For compression, use mmap with 1 worker (trade-off: slower but 4-5\u00d7 smaller)."
+}

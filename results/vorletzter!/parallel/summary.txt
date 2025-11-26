@@ -1,0 +1,34 @@
+================================================================================
+  PARALLEL PREPROCESSING SPEEDUP - SUMMARY
+================================================================================
+
+Dataset size: 2,000 samples
+
+RESULTS:
+--------------------------------------------------------------------------------
+Workers      Time (s)     Samples/s       Speedup (×) 
+--------------------------------------------------------------------------------
+1            21.1         94.9            1.00        
+2            15.4         129.9           1.37        
+4            9.9          202.1           2.13        
+7            8.8          226.8           2.39        
+--------------------------------------------------------------------------------
+
+VERDICT:
+  ✅ Parallel processing working correctly
+  📈 Peak speedup: 2.39×
+
+COMPRESSION TRADE-OFF:
+--------------------------------------------------------------------------------
+  Storage backend used: files (uncompressed)
+  ⚡ Speed: Optimized for parallel processing
+
+  Alternative: mmap with 1 worker
+  💾 Compressed size: 14.8 MB (4.46× compression)
+  ⏱️  Sequential time: 33.5s
+
+  📝 RECOMMENDATION:
+     - Use 'files' + many workers for speed (development)
+     - Use 'mmap' + 1 worker for compression (production)
+
+================================================================================

@@ -1,0 +1,114 @@
+# B1 Submission - Complete File Checkout List
+# Copy these files from branch 'b1_sup' to your fresh branch
+
+## CORE IMPLEMENTATION (Required)
+
+# Main preprocessor integration
+topobench/data/preprocessor/ondisk_inductive.py
+
+# Internal components (_ondisk module - all required)
+topobench/data/preprocessor/_ondisk/__init__.py
+topobench/data/preprocessor/_ondisk/storage_backend.py
+topobench/data/preprocessor/_ondisk/parallel_processor.py
+topobench/data/preprocessor/_ondisk/transform_pipeline.py
+topobench/data/preprocessor/_ondisk/transform_classifier.py
+topobench/data/preprocessor/_ondisk/transform_dag.py
+
+# Dataset foundation (base classes)
+topobench/data/datasets/base_inductive.py
+topobench/data/datasets/adapters.py
+topobench/data/datasets/_lazy.py
+
+# Example dataset implementation
+topobench/data/datasets/ogbg_molpcba.py
+
+# Updated utilities (if modified)
+topobench/data/utils/split_utils.py
+
+# Factory integration (if needed)
+topobench/data/preprocessor/factory.py
+
+## TEST FILES (Validation & Documentation)
+
+# Comprehensive preprocessor tests
+test/data/preprocessor/test_ondisk_inductive.py
+test/data/preprocessor/test_storage_backend.py
+test/data/preprocessor/test_parallel_processor.py
+test/data/preprocessor/test_transform_pipeline.py
+test/data/preprocessor/test_transform_classifier.py
+test/data/preprocessor/test_transform_dag.py
+test/data/preprocessor/test_dag_caching.py
+test/data/preprocessor/test_parallel_merge.py
+test/data/preprocessor/test_lru_cache.py
+
+# Dataset tests
+test/data/datasets/test_base_inductive.py
+test/data/datasets/test_inductive_ondisk_adapters.py
+test/data/datasets/test_lazy_subsets.py
+
+## CONFIGURATION & EXAMPLES
+
+# Example training scripts
+examples/train_ogbg_molpcba_scn2.py
+examples/train_ogbn_products_ondisk.py
+
+# Configuration files
+configs/dataset/graph/ogbg_molpcba.yaml
+configs/experiment/ogbg_molpcba_dag_demo.yaml
+configs/experiment/ogbg_molpcba_scn2_full.yaml
+configs/experiment/ogbg_molpcba_scn2_test.yaml
+
+## TUTORIALS (User Documentation)
+
+# Primary tutorial
+tutorials/tutorial_ondisk_inductive_final.ipynb
+
+# Supporting tutorials
+tutorials/tutorial_ondisk_inductive.ipynb
+tutorials/tutorial_ondisk_inductive_advanced.ipynb
+tutorials/tutorial_ondisk_inductive_getting_started.ipynb
+tutorials/tutorial_ogbg_molpcba_scn2.ipynb
+
+## DEPENDENCIES
+
+# Updated dependencies (check if modified)
+pyproject.toml  # Added lz4, zstandard
+
+## DOCUMENTATION (This guide)
+
+# For the fresh agent
+B1_SUBMISSION_GUIDE_FOR_FRESH_AGENT.md
+B1_FILES_TO_CHECKOUT.txt
+
+## OPTIONAL SUPPORT FILES (for context)
+
+# Additional datasets if referenced
+topobench/data/datasets/mock_transductive_graph.py
+topobench/data/datasets/synthetic_large_inductive_dataset.py
+
+# Callback utilities
+topobench/callbacks/memory_cleanup.py
+configs/callbacks/memory_cleanup.yaml
+
+## CHECKOUT COMMAND EXAMPLE (using git)
+
+# From branch b1_sup, checkout these files to your branch:
+# git checkout b1_sup -- <file_path>
+
+# Or create archive for transfer:
+# git archive b1_sup $(cat B1_FILES_TO_CHECKOUT.txt | grep -v '^#' | grep -v '^$') -o b1_submission.tar
+
+## FILE COUNT SUMMARY
+
+Core Implementation: 11 files (~3,500 lines)
+Test Files: 12 files (~150 tests)
+Examples: 2 files
+Configs: 4 files
+Tutorials: 5 notebooks
+Total: ~34 essential files
+
+## VERIFICATION
+
+After checkout, verify with:
+pytest test/data/preprocessor/test_ondisk_inductive.py -v
+pytest test/data/datasets/test_base_inductive.py -v

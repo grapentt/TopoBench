@@ -298,16 +298,26 @@ class SQLiteIndexBackend(AbstractIndexBackend):
                 for struct_id, nodes_json in cursor
             ]
 
+    def count_structures(self) -> int:
+        """Get total number of indexed structures.
+
+        Returns
+        -------
+        int
+            Total structure count.
+        """
+        cursor = self.conn.execute("SELECT COUNT(*) FROM structures")
+        return cursor.fetchone()[0]
+    
     def count_cliques(self) -> int:
-        """Get total number of indexed cliques.
+        """Get total number of indexed cliques (alias for backward compatibility).
 
         Returns
         -------
         int
             Total clique count.
         """
-        cursor = self.conn.execute("SELECT COUNT(*) FROM structures")
-        return cursor.fetchone()[0]
+        return self.count_structures()
 
     def exists(self) -> bool:
         """Check if index database exists and is non-empty.

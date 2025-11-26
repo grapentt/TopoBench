@@ -1,0 +1,16 @@
+# Quick benchmark configuration (~5-10 minutes)
+# For development and quick validation
+
+memory:
+  sizes: [100, 500, 1000]
+  accesses: 50
+  
+parallel:
+  samples: 500
+  workers: [1, 2, 4]
+  batch_size: 32
+  runs: 2
+
+storage:
+  samples: 500
+  reads: 50

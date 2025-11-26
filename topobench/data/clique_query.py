@@ -127,7 +127,7 @@ class CliqueQueryEngine:
 
         # Check if index exists and we're not forcing rebuild
         if not self.force_rebuild and self.backend.exists():
-            self.num_cliques = self.backend.count_cliques()
+            self.num_cliques = self.backend.count_structures()
             print(f"Loaded existing index: {self.num_cliques} cliques")
             return
 
@@ -143,7 +143,7 @@ class CliqueQueryEngine:
             self.graph, self.backend, max_size=self.max_clique_size
         )
 
-        self.num_cliques = self.backend.count_cliques()
+        self.num_cliques = self.backend.count_structures()
         print(f"Indexed {self.num_cliques} cliques")
 
     def query_batch(

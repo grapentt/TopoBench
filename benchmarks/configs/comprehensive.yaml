@@ -1,0 +1,39 @@
+# Comprehensive benchmark configuration for publication
+# Showcases all innovations: DAG caching, on-disk transforms, memory efficiency, training
+
+# Parallel speedup benchmark (entire preprocessing pipeline!)
+parallel:
+  dataset_size: 5000
+  # worker_counts: auto-generated (powers of 2 + max_cores-1)
+  runs: 3
+
+# Lifting + Normalization benchmark
+lifting:
+  dataset_sizes: [1000, 5000, 10000]  # Graph datasets of varying sizes
+  runs: 3
+  complex_dim: 2
+  
+# DAG recomputation benchmark (key innovation!)
+dag_recomputation:
+  dataset_size: 5000
+  runs: 3
+  scenarios:
+    - name: "light_change"
+      description: "Change only normalization params (should recompute only norm)"
+    - name: "heavy_change"
+      description: "Change lifting params (should recompute lifting + norm)"
+    - name: "no_change"
+      description: "No changes (should use cache, instant)"
+
+# Training epochs benchmark
+training:
+  dataset_size: 5000
+  num_epochs: 50
+  batch_size: 32
+  hidden_dim: 64
+  runs: 3
+
+# Memory efficiency benchmark
+memory:
+  dataset_sizes: [1000, 5000, 10000, 20000]
+  runs: 3

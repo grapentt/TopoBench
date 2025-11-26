@@ -1,0 +1,26 @@
+================================================================================
+  MEMORY LIFTING (PREPROCESSING ONLY) - SUMMARY
+================================================================================
+
+CLAIM: On-Disk maintains O(1) constant memory vs O(n) In-Memory
+
+RESULTS:
+--------------------------------------------------------------------------------
+Size         In-Memory (MB)     On-Disk (MB)       Savings     
+--------------------------------------------------------------------------------
+500          31.48              4.65               85.2       %
+1,000        53.86              3.45               93.6       %
+2,000        98.57              3.89               96.0       %
+--------------------------------------------------------------------------------
+
+SCALING ANALYSIS:
+  In-Memory: 45.80 KB per sample (LINEAR growth)
+  On-Disk:   -0.52 KB per sample (CONSTANT)
+  Growth ratio: 44.7× (higher = more O(1))
+
+VERDICT:
+  ✅ On-disk memory stays constant (~4.7 MB)
+  ✅ In-memory memory grows linearly
+  💾 Average savings: 92%
+
+================================================================================

@@ -1,0 +1,31 @@
+{
+  "dataset_size": 20000,
+  "timings": {
+    "initial_build": 84.61195135116577,
+    "cache_hit": 0.0009059906005859375,
+    "light_extension": 28.594186067581177,
+    "heavy_extension": 56.74376678466797
+  },
+  "scenarios": {
+    "initial_build": {
+      "time": 84.61195135116577,
+      "speedup": 1.0,
+      "description": "Cold start"
+    },
+    "cache_hit": {
+      "time": 0.0009059906005859375,
+      "speedup": 93391.64368421053,
+      "description": "Exact reuse"
+    },
+    "light_extension": {
+      "time": 28.594186067581177,
+      "speedup": 2.9590613683211306,
+      "description": "Add 1 transform"
+    },
+    "heavy_extension": {
+      "time": 56.74376678466797,
+      "speedup": 1.4911232747775165,
+      "description": "Add 2 transforms"
+    }
+  }
+}

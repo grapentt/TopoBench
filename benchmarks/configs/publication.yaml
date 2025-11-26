@@ -1,0 +1,16 @@
+# Publication benchmark configuration (~45-60 minutes)
+# For high-quality results with maximum statistical confidence
+
+memory:
+  sizes: [100, 500, 1000, 2000, 5000, 10000]
+  accesses: 200
+  
+parallel:
+  samples: 5000
+  workers: [1, 2, 4, 8]
+  batch_size: 32
+  runs: 5
+
+storage:
+  samples: 2000
+  reads: 200

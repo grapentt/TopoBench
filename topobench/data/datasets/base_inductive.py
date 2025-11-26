@@ -191,7 +191,7 @@ class BaseOnDiskInductiveDataset(Dataset, ABC):
         if self.cache_samples:
             cache_path = self._get_cache_path(idx)
             if cache_path.exists():
-                return torch.load(cache_path)
+                return torch.load(cache_path, weights_only=False)
 
         # Generate/load sample
         sample = self._generate_or_load_sample(idx)

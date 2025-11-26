@@ -1,0 +1,77 @@
+{
+  "system_info": {
+    "platform": "Linux-6.16.8+kali-amd64-x86_64-with-glibc2.41",
+    "processor": "",
+    "python_version": "3.13.9",
+    "pytorch_version": "2.9.1+cu128",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "total_memory_gb": 31.08254623413086,
+    "cuda_available": false,
+    "cuda_device": null
+  },
+  "config": {
+    "dataset_sizes": [
+      500,
+      1000
+    ],
+    "runs": 2,
+    "complex_dim": 2
+  },
+  "benchmarks": [
+    {
+      "dataset_size": 500,
+      "complex_dim": 2,
+      "num_workers": null,
+      "runs": 2,
+      "total_time": {
+        "mean": 7.601638482003182,
+        "std": 0.233877675003896,
+        "min": 7.367760806999286,
+        "max": 7.835516157007078,
+        "raw": [
+          7.835516157007078,
+          7.367760806999286
+        ]
+      },
+      "preprocessing_time": {
+        "mean": 7.601637661005952,
+        "std": 0.23387777600146364,
+        "min": 7.367759885004489,
+        "max": 7.835515437007416,
+        "raw": [
+          7.835515437007416,
+          7.367759885004489
+        ]
+      },
+      "throughput_samples_per_sec": 65.77529320602999
+    },
+    {
+      "dataset_size": 1000,
+      "complex_dim": 2,
+      "num_workers": null,
+      "runs": 2,
+      "total_time": {
+        "mean": 11.115273757495743,
+        "std": 0.054334156498953234,
+        "min": 11.06093960099679,
+        "max": 11.169607913994696,
+        "raw": [
+          11.169607913994696,
+          11.06093960099679
+        ]
+      },
+      "preprocessing_time": {
+        "mean": 11.11527245650359,
+        "std": 0.05433479949715547,
+        "min": 11.060937657006434,
+        "max": 11.169607256000745,
+        "raw": [
+          11.169607256000745,
+          11.060937657006434
+        ]
+      },
+      "throughput_samples_per_sec": 89.96629519139246
+    }
+  ]
+}

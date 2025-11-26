@@ -1,0 +1,16 @@
+# Standard benchmark configuration (~15-20 minutes)
+# For reliable results with good statistical power
+
+memory:
+  sizes: [100, 500, 1000, 2000, 5000]
+  accesses: 100
+  
+parallel:
+  samples: 2000
+  workers: [1, 2, 4, 8]
+  batch_size: 32
+  runs: 3
+
+storage:
+  samples: 1000
+  reads: 100

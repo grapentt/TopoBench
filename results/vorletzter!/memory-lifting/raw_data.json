@@ -1,0 +1,42 @@
+{
+  "inmemory": [
+    {
+      "dataset_size": 500,
+      "peak_memory_mb": 895.1015625,
+      "delta_memory_mb": 31.48046875,
+      "approach": "in-memory"
+    },
+    {
+      "dataset_size": 1000,
+      "peak_memory_mb": 917.50390625,
+      "delta_memory_mb": 53.85546875,
+      "approach": "in-memory"
+    },
+    {
+      "dataset_size": 2000,
+      "peak_memory_mb": 962.33984375,
+      "delta_memory_mb": 98.56640625,
+      "approach": "in-memory"
+    }
+  ],
+  "ondisk": [
+    {
+      "dataset_size": 500,
+      "peak_memory_mb": 868.24609375,
+      "delta_memory_mb": 4.65234375,
+      "approach": "on-disk"
+    },
+    {
+      "dataset_size": 1000,
+      "peak_memory_mb": 867.01953125,
+      "delta_memory_mb": 3.44921875,
+      "approach": "on-disk"
+    },
+    {
+      "dataset_size": 2000,
+      "peak_memory_mb": 867.51171875,
+      "delta_memory_mb": 3.89453125,
+      "approach": "on-disk"
+    }
+  ]
+}

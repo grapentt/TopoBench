@@ -1,0 +1,28 @@
+================================================================================
+  DAG CACHE REUSE - COMPREHENSIVE SUMMARY
+================================================================================
+
+Dataset size: 20,000 samples
+
+RESULTS:
+--------------------------------------------------------------------------------
+Scenario                  Time (s)     Speedup      Description
+--------------------------------------------------------------------------------
+Initial Build             84.6         1.00        × Cold start
+Cache Hit                 0.0          93391.64    × Exact reuse
+Light Extension           28.6         2.96        × Add 1 transform
+Heavy Extension           56.7         1.49        × Add 2 transforms
+--------------------------------------------------------------------------------
+
+ANALYSIS:
+  💾 Cache hit: 0.0% of initial build time
+  ⚡ Light extension: Only 28.6s for new transform
+  🚀 Heavy extension: Only 56.7s for 2 new transforms
+  📊 Cache avoided 3 full rebuilds
+
+VERDICT:
+  ✅ DAG cache working perfectly
+  ✅ Exact reuse: 93391.6× faster
+  ✅ Incremental builds: 1.5× faster than rebuild
+
+================================================================================

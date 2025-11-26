@@ -1,0 +1,13 @@
+# Quick test configuration for DAG caching validation
+# Small dataset for fast iteration
+
+dag_recomputation:
+  dataset_size: 100  # Small for quick testing
+  runs: 1  # Single run for speed
+  scenarios:
+    - name: "light_change"
+      description: "Change only normalization params"
+    - name: "heavy_change"
+      description: "Change lifting params"
+    - name: "no_change"
+      description: "No changes (cache hit)"
