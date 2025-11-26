@@ -7,12 +7,14 @@ lifting operations from graphs to simplicial complexes) one sample at a time to
 maintain constant memory usage.
 """
 
+import contextlib
 import json
+import os
 from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
-import os
+
 import numpy as np
 import torch
 import torch_geometric
@@ -45,9 +47,9 @@ def _convert_shard_to_mmap(
     compression: str | None,
 ) -> dict[str, Any]:
     """Convert a shard of samples to a temporary mmap file.
-    
+
     This function runs in a worker process to parallelize mmap conversion.
-    
+
     Parameters
     ----------
     start_idx : int
@@ -60,7 +62,7 @@ def _convert_shard_to_mmap(
         Shard identifier for temporary file naming.
     compression : str | None
         Compression algorithm ("lz4", "zstd", or None).
-    
+
     Returns
     -------
     dict
@@ -69,20 +71,20 @@ def _convert_shard_to_mmap(
     # Create shard-specific storage
     shard_dir = processed_dir / f"_shard_{shard_id}"
     shard_dir.mkdir(exist_ok=True)
-    
+
     storage = MemoryMappedStorage(
         data_dir=shard_dir,
         compression=compression,
         readonly=False,
     )
-    
+
     success_count = 0
     error_count = 0
     files_to_delete = []  # Batch deletions for better I/O performance
-    
+
     for idx in range(start_idx, end_idx):
         sample_path = processed_dir / f"sample_{idx:06d}.pt"
-        
+
         if sample_path.exists():
             try:
                 data = torch.load(sample_path, weights_only=False)
@@ -92,20 +94,21 @@ def _convert_shard_to_mmap(
                 success_count += 1
             except Exception as e:
                 error_count += 1
-                print(f"Warning: Failed to convert sample {idx}: {e}")
+                # Log conversion failure for this sample
+                print(
+                    f"[OnDiskInductivePreprocessor] Failed to convert sample {idx}: {e}"
+                )
         else:
             error_count += 1
-    
+
     # Batch delete files for better I/O performance
     for file_path in files_to_delete:
-        try:
-            file_path.unlink()
-        except OSError:
-            pass  # File might have been deleted already
-    
+        with contextlib.suppress(OSError):
+            file_path.unlink()  # File might have been deleted already
+
     # Close storage to flush writes
     storage.close()
-    
+
     return {
         "shard_id": shard_id,
         "start_idx": start_idx,
@@ -124,10 +127,10 @@ def _write_shard_to_offset(
     expected_size: int,
 ) -> dict[str, Any]:
     """Write shard data to specific offset in pre-allocated final file (parallel-safe).
-    
+
     This function is designed for parallel execution - multiple workers can write
     to different offsets of the same file simultaneously without data corruption.
-    
+
     Parameters
     ----------
     processed_dir : Path
@@ -140,12 +143,12 @@ def _write_shard_to_offset(
         Byte offset where this shard's data should be written.
     expected_size : int
         Expected size of shard data (for validation).
-    
+
     Returns
     -------
     dict
         Statistics: shard_id, bytes_written, success status.
-    
+
     Raises
     ------
     RuntimeError
@@ -153,63 +156,67 @@ def _write_shard_to_offset(
     """
     shard_dir = processed_dir / f"_shard_{shard_id}"
     shard_mmap_path = shard_dir / "samples.mmap"
-    
+
     # Validate shard exists and has correct size
     if not shard_mmap_path.exists():
-        raise RuntimeError(f"Shard {shard_id} mmap file not found: {shard_mmap_path}")
-    
+        raise RuntimeError(
+            f"Shard {shard_id} mmap file not found: {shard_mmap_path}"
+        )
+
     actual_size = shard_mmap_path.stat().st_size
     if actual_size != expected_size:
         raise RuntimeError(
             f"Shard {shard_id} size mismatch: expected {expected_size} bytes, "
             f"got {actual_size} bytes"
         )
-    
+
     bytes_written = 0
-    
+
     try:
         # Open final file for writing at specific offset (r+b = read+write binary)
-        with open(final_mmap_path, 'r+b') as final_file:
-            with open(shard_mmap_path, 'rb') as shard_file:
-                # Use pwrite for atomic writes if available (Linux)
-                if hasattr(os, 'pwrite'):
-                    # Read entire shard (sizes are typically <100MB per shard)
-                    shard_data = shard_file.read()
-                    
-                    # Atomic write to specific offset
-                    written = os.pwrite(final_file.fileno(), shard_data, offset)
-                    bytes_written = written
-                    
-                    if written != expected_size:
-                        raise RuntimeError(
-                            f"Incomplete write for shard {shard_id}: "
-                            f"wrote {written}/{expected_size} bytes"
-                        )
-                else:
-                    # Fallback: seek + buffered write (still parallel-safe for non-overlapping offsets)
-                    final_file.seek(offset)
-                    
-                    # Use large buffer for efficiency (4MB chunks)
-                    chunk_size = 4 * 1024 * 1024
-                    while True:
-                        chunk = shard_file.read(chunk_size)
-                        if not chunk:
-                            break
-                        written_chunk = final_file.write(chunk)
-                        bytes_written += written_chunk
-                    
-                    if bytes_written != expected_size:
-                        raise RuntimeError(
-                            f"Incomplete write for shard {shard_id}: "
-                            f"wrote {bytes_written}/{expected_size} bytes"
-                        )
-        
+        with (
+            open(final_mmap_path, "r+b") as final_file,
+            open(shard_mmap_path, "rb") as shard_file,
+        ):
+            # Use pwrite for atomic writes if available (Linux)
+            if hasattr(os, "pwrite"):
+                # Read entire shard (sizes are typically <100MB per shard)
+                shard_data = shard_file.read()
+
+                # Atomic write to specific offset
+                written = os.pwrite(final_file.fileno(), shard_data, offset)
+                bytes_written = written
+
+                if written != expected_size:
+                    raise RuntimeError(
+                        f"Incomplete write for shard {shard_id}: "
+                        f"wrote {written}/{expected_size} bytes"
+                    )
+            else:
+                # Fallback: seek + buffered write (still parallel-safe for non-overlapping offsets)
+                final_file.seek(offset)
+
+                # Use large buffer for efficiency (4MB chunks)
+                chunk_size = 4 * 1024 * 1024
+                while True:
+                    chunk = shard_file.read(chunk_size)
+                    if not chunk:
+                        break
+                    written_chunk = final_file.write(chunk)
+                    bytes_written += written_chunk
+
+                if bytes_written != expected_size:
+                    raise RuntimeError(
+                        f"Incomplete write for shard {shard_id}: "
+                        f"wrote {bytes_written}/{expected_size} bytes"
+                    )
+
         return {
             "shard_id": shard_id,
             "bytes_written": bytes_written,
             "success": True,
         }
-    
+
     except Exception as e:
         return {
             "shard_id": shard_id,
@@ -221,10 +228,10 @@ def _write_shard_to_offset(
 
 class _CachedTransformDataset(Dataset):
     """Dataset that loads from cached transform output (picklable for multiprocessing).
-    
+
     This class is defined at module level to enable pickling for parallel processing.
     It wraps a cached transform directory and provides indexed access to samples.
-    
+
     Parameters
     ----------
     cache_dir : Path
@@ -236,14 +243,20 @@ class _CachedTransformDataset(Dataset):
     compression : str
         Compression algorithm (for mmap).
     """
-    
-    def __init__(self, cache_dir: Path, num_samples: int, storage_backend: str, compression: str):
+
+    def __init__(
+        self,
+        cache_dir: Path,
+        num_samples: int,
+        storage_backend: str,
+        compression: str,
+    ):
         """Initialize cached dataset."""
         self.cache_dir = Path(cache_dir)
         self.num_samples = num_samples
         self.storage_backend = storage_backend
         self.compression = compression
-        
+
         # Load storage if mmap
         if storage_backend == "mmap":
             try:
@@ -256,34 +269,61 @@ class _CachedTransformDataset(Dataset):
                 self._storage = None
         else:
             self._storage = None
-    
+
     def __len__(self):
-        """Return number of samples."""
+        """Return number of samples.
+
+        Returns
+        -------
+        int
+            Number of samples in the dataset.
+        """
         return self.num_samples
-    
+
     def __getitem__(self, idx):
-        """Load sample from cache."""
+        """Load sample from cache.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the sample to load.
+
+        Returns
+        -------
+        torch_geometric.data.Data
+            The loaded sample data.
+        """
         if self._storage is not None:
             return self._storage[idx]
         else:
             # Load from file
             sample_path = self.cache_dir / f"sample_{idx:06d}.pt"
             return torch.load(sample_path, weights_only=False)
-    
+
     def __reduce__(self):
         """Support pickling for multiprocessing.
-        
-        Returns class with serializable arguments for reconstruction.
+
+        Returns
+        -------
+        tuple
+            Tuple containing reconstruction function and serializable arguments.
         """
         return (
             _reconstruct_cached_transform_dataset,
-            (str(self.cache_dir), self.num_samples, self.storage_backend, self.compression),
+            (
+                str(self.cache_dir),
+                self.num_samples,
+                self.storage_backend,
+                self.compression,
+            ),
         )
 
 
-def _reconstruct_cached_transform_dataset(cache_dir: str, num_samples: int, storage_backend: str, compression: str):
+def _reconstruct_cached_transform_dataset(
+    cache_dir: str, num_samples: int, storage_backend: str, compression: str
+):
     """Reconstruct _CachedTransformDataset from pickle (helper for __reduce__).
-    
+
     Parameters
     ----------
     cache_dir : str
@@ -294,20 +334,22 @@ def _reconstruct_cached_transform_dataset(cache_dir: str, num_samples: int, stor
         Storage backend.
     compression : str
         Compression algorithm.
-    
+
     Returns
     -------
     _CachedTransformDataset
         Reconstructed dataset instance.
     """
-    return _CachedTransformDataset(Path(cache_dir), num_samples, storage_backend, compression)
+    return _CachedTransformDataset(
+        Path(cache_dir), num_samples, storage_backend, compression
+    )
 
 
 class OnDiskInductivePreprocessor(Dataset):
     """Disk-backed preprocessor for large-scale inductive learning.
 
-    Processes samples one-at-a-time and stores results on disk to maintain O(1) 
-    memory usage regardless of dataset size. Supports DAG-based transform caching, 
+    Processes samples one-at-a-time and stores results on disk to maintain O(1)
+    memory usage regardless of dataset size. Supports DAG-based transform caching,
     parallel multi-worker processing, and flexible storage backends.
 
     Parameters
@@ -321,7 +363,7 @@ class OnDiskInductivePreprocessor(Dataset):
     force_reload : bool, optional
         If True, reprocess all samples even if cache exists (default: False).
     num_workers : int, optional
-        Number of parallel workers (default: None = cpu_count-1). 
+        Number of parallel workers (default: None = cpu_count-1).
         Set to 1 for sequential processing.
     batch_size : int, optional
         Batch size for parallel processing (default: 32).
@@ -330,16 +372,16 @@ class OnDiskInductivePreprocessor(Dataset):
         Set to 0 to disable. LRU eviction policy.
     storage_backend : str, optional
         Storage backend: "mmap" (compressed, default) or "files" (faster parallel).
-        
+
         **Trade-off:**
         - "files" + many workers: 3-6× faster preprocessing, 4-7× larger disk usage
         - "mmap" + 1 worker: 4-7× smaller storage, slower preprocessing
-        
+
     compression : str, optional
         Compression for mmap: None, "lz4" (default, fast), or "zstd" (better ratio).
         Only applies when storage_backend="mmap".
     transform_tier : str, optional
-        Transform classification mode: "all_heavy" (default), "auto", 
+        Transform classification mode: "all_heavy" (default), "auto",
         "all_light", or "manual". Default: "all_heavy".
     tier_override : dict, optional
         Manual transform classification. Maps class names to "heavy" or "light".
@@ -552,7 +594,7 @@ class OnDiskInductivePreprocessor(Dataset):
         # Support negative indexing like Python lists
         if idx < 0:
             idx = self.num_samples + idx
-        
+
         if idx < 0 or idx >= self.num_samples:
             raise IndexError(
                 f"Index {idx} out of range for dataset of size "
@@ -629,29 +671,31 @@ class OnDiskInductivePreprocessor(Dataset):
                 if not entry["cached"]:
                     # At least one transform not cached, need processing
                     return True
-            
+
             # All transforms cached, check final output validity
             if not self.metadata_path.exists():
                 return True
-            
+
             try:
                 with open(self.metadata_path) as f:
                     metadata = json.load(f)
-                
+
                 # Verify transform chain matches
                 saved_chain = metadata.get("transform_chain", [])
                 if len(saved_chain) != len(self.transform_chain):
                     return True
-                
+
                 # Check each transform hash matches
-                for saved, current in zip(saved_chain, self.transform_chain):
+                for saved, current in zip(
+                    saved_chain, self.transform_chain, strict=True
+                ):
                     if saved.get("hash") != current["hash"]:
                         return True
-                
+
                 return False
             except (json.JSONDecodeError, KeyError, FileNotFoundError):
                 return True
-        
+
         # No transform chain
         if not self.metadata_path.exists():
             return True
@@ -667,8 +711,12 @@ class OnDiskInductivePreprocessor(Dataset):
                 mmap_path = self.processed_dir / "samples.mmap"
                 idx_path = self.processed_dir / "samples.idx.npy"
                 storage_metadata_path = self.processed_dir / "metadata.json"
-                
-                if not (mmap_path.exists() and idx_path.exists() and storage_metadata_path.exists()):
+
+                if not (
+                    mmap_path.exists()
+                    and idx_path.exists()
+                    and storage_metadata_path.exists()
+                ):
                     return True
             else:
                 # Check for individual sample files
@@ -689,9 +737,9 @@ class OnDiskInductivePreprocessor(Dataset):
             return True
 
     def _process_samples(self) -> None:
-        """Process samples with DAG-based incremental caching.
+        """Apply DAG-based incremental caching to process samples.
 
-        Only processes uncached transforms, reuses cached ones!
+        Only process uncached transforms, reuse cached ones!
         """
         # DAG-aware incremental processing
         if hasattr(self, "transform_chain") and self.transform_chain:
@@ -699,26 +747,27 @@ class OnDiskInductivePreprocessor(Dataset):
         else:
             # Legacy: Full processing (no transform chain)
             self._process_samples_full()
-    
+
     def _process_samples_incremental(self) -> None:
-        """Process samples incrementally using transform chain cache.
-        
-        Only processes uncached transforms.
+        """Apply incremental processing using transform chain cache.
+
+        Only process uncached transforms.
         """
         # Find which transforms need processing
         uncached_indices = [
-            i for i, entry in enumerate(self.transform_chain)
+            i
+            for i, entry in enumerate(self.transform_chain)
             if not entry["cached"]
         ]
-        
+
         if not uncached_indices:
             # All cached! Just load metadata
             self._load_metadata()
             return
-        
+
         # Find last cached transform (our starting point)
         first_uncached_idx = uncached_indices[0]
-        
+
         if first_uncached_idx == 0:
             # No cached transforms, process from scratch
             source_dataset = self.dataset
@@ -728,31 +777,28 @@ class OnDiskInductivePreprocessor(Dataset):
             last_cached_idx = first_uncached_idx - 1
             cached_entry = self.transform_chain[last_cached_idx]
             cached_dir = Path(cached_entry["output_dir"])
-            
-            print(f"Reusing {last_cached_idx + 1} cached transform(s)!")
-            print(f"Loading from: {cached_dir}")
-            print(f"Processing remaining {len(uncached_indices)} transform(s)")
-            
+
             # Create dataset that loads from cached location
             source_dataset = self._create_cached_dataset(cached_dir)
-            
+
             # Create transform for remaining uncached transforms
-            source_transform = self._create_partial_transform(first_uncached_idx)
-        
+            source_transform = self._create_partial_transform(
+                first_uncached_idx
+            )
+
         # Process uncached transforms
         self._process_samples_full(
-            source_dataset=source_dataset,
-            source_transform=source_transform
+            source_dataset=source_dataset, source_transform=source_transform
         )
-    
+
     def _create_cached_dataset(self, cached_dir: Path) -> Dataset:
         """Create dataset that loads from cached transform output.
-        
+
         Parameters
         ----------
         cached_dir : Path
             Directory containing cached samples.
-        
+
         Returns
         -------
         Dataset
@@ -763,17 +809,21 @@ class OnDiskInductivePreprocessor(Dataset):
         with open(metadata_path) as f:
             metadata = json.load(f)
         num_samples = metadata["num_samples"]
-        
-        return _CachedTransformDataset(cached_dir, num_samples, self.storage_backend, self.compression)
-    
-    def _create_partial_transform(self, start_idx: int) -> torch_geometric.transforms.Compose:
+
+        return _CachedTransformDataset(
+            cached_dir, num_samples, self.storage_backend, self.compression
+        )
+
+    def _create_partial_transform(
+        self, start_idx: int
+    ) -> torch_geometric.transforms.Compose:
         """Create transform composed of only uncached transforms.
-        
+
         Parameters
         ----------
         start_idx : int
             Index of first uncached transform in chain.
-        
+
         Returns
         -------
         Compose
@@ -785,25 +835,24 @@ class OnDiskInductivePreprocessor(Dataset):
             self.transform_chain[i]["transform_id"]
             for i in range(start_idx, len(self.transform_chain))
         ]
-        
+
         # Extract transform objects
         transforms = [
-            dag.nodes[tid].transform
-            for tid in uncached_transform_ids
+            dag.nodes[tid].transform for tid in uncached_transform_ids
         ]
-        
+
         if not transforms:
             return None
-        
+
         return torch_geometric.transforms.Compose(transforms)
-    
+
     def _process_samples_full(
         self,
         source_dataset: Dataset | None = None,
-        source_transform: torch_geometric.transforms.Compose | None = None
+        source_transform: torch_geometric.transforms.Compose | None = None,
     ) -> None:
         """Full processing (used by both legacy and incremental paths).
-        
+
         Parameters
         ----------
         source_dataset : Dataset, optional
@@ -815,12 +864,15 @@ class OnDiskInductivePreprocessor(Dataset):
             source_dataset = self.dataset
         if source_transform is None:
             source_transform = self.pre_transform
-        
+
         import time as time_module
+
         processing_start = time_module.time()
-        
+
+        # High-level progress message
         print(
-            f"Processing {len(source_dataset)} samples to {self.processed_dir}"
+            f"[OnDiskInductivePreprocessor] Processing {len(source_dataset)} "
+            f"samples into {self.processed_dir}"
         )
 
         # Clear existing files if force_reload
@@ -836,7 +888,7 @@ class OnDiskInductivePreprocessor(Dataset):
 
         # TIMING: Transform application
         transform_start = time_module.time()
-        
+
         # Process samples (parallel or sequential)
         results = processor.process(
             dataset=source_dataset,
@@ -844,39 +896,29 @@ class OnDiskInductivePreprocessor(Dataset):
             output_dir=self.processed_dir,
             num_samples=len(source_dataset),
         )
-        
+
         transform_time = time_module.time() - transform_start
 
         # Save metadata
         self.num_samples = len(source_dataset)
         self._save_metadata()
 
-        # Report results
-        if results["failed"] > 0:
-            print(
-                f"Processed {results['success']}/{results['total']} samples "
-                f"({results['failed']} failed)"
-            )
-            print("\nErrors:")
-            for error in results["errors"][:5]:  # Show first 5 errors
-                print(f"  - {error}")
-            if len(results["errors"]) > 5:
-                print(f"  ... and {len(results['errors']) - 5} more errors")
-        else:
-            print(f"Processed {self.num_samples} samples successfully")
-        
-        print(f"⏱️  Transform processing: {transform_time:.2f}s ({self.num_samples/transform_time:.1f} samples/s)")
-
         # Convert to memory-mapped storage if requested (only if samples succeeded)
         if self.storage_backend == "mmap" and results["success"] > 0:
             self._convert_to_mmap_storage()
-            print(
-                f"Storage: {self._storage.get_stats()['total_size_mb']:.1f} MB "
-                f"({self._storage.get_stats()['compression_ratio']:.2f}× compression)"
-            )
-        
+
         total_processing_time = time_module.time() - processing_start
-        print(f"⏱️  TOTAL PROCESSING (transform + mmap): {total_processing_time:.2f}s")
+
+        # Summary timing information
+        print(
+            f"[OnDiskInductivePreprocessor] Transform processing time: "
+            f"{transform_time:.2f}s "
+            f"({self.num_samples / max(transform_time, 1e-6):.1f} samples/s)"
+        )
+        print(
+            f"[OnDiskInductivePreprocessor] Total preprocessing time "
+            f"(transforms + storage): {total_processing_time:.2f}s"
+        )
 
     def _instantiate_pre_transform(
         self, transforms_config: DictConfig
@@ -1000,27 +1042,31 @@ class OnDiskInductivePreprocessor(Dataset):
         4. Sets final output directory (processed_dir)
         """
         dag = self.transform_pipeline.get_dag()
-        
+
         # Build transform chain metadata
         chain = []
         for transform_id in dag.execution_order:
             node = dag.nodes[transform_id]
-            
+
             # Only track heavy transforms (light transforms are runtime)
             if node.tier != "heavy":
                 continue
-            
+
             # Use transform_id + hash for cache directory to avoid collisions:
             # - transform_id: Distinguishes duplicate transforms at different positions
             # - hash: Distinguishes same transform with different parameters
             # Format: {transform_id}_{hash} (e.g., DataTransform_0_b13b3327)
             transform_class = node.transform.__class__.__name__
             transform_hash = node.hash_value
-            transform_dir = self.data_dir / "transform_chain" / f"{transform_id}_{transform_hash}"
-            
+            transform_dir = (
+                self.data_dir
+                / "transform_chain"
+                / f"{transform_id}_{transform_hash}"
+            )
+
             # Check if this transform is cached
             is_cached = self._check_transform_cached(transform_dir)
-            
+
             chain_entry = {
                 "transform_id": transform_id,
                 "transform_class": transform_class,
@@ -1030,17 +1076,17 @@ class OnDiskInductivePreprocessor(Dataset):
                 "cached": is_cached,
             }
             chain.append(chain_entry)
-        
+
         # Store chain for metadata and processing
         self.transform_chain = chain
-        
+
         # Set processed_dir to final transform output
         if chain:
             self.processed_dir = Path(chain[-1]["output_dir"])
         else:
             # No heavy transforms, use default
             self.processed_dir = self.data_dir / "no_heavy_transforms"
-    
+
     def _check_transform_cached(self, transform_dir: Path) -> bool:
         """Check if a transform's output is cached.
 
@@ -1056,32 +1102,38 @@ class OnDiskInductivePreprocessor(Dataset):
         """
         if not transform_dir.exists():
             return False
-        
+
         # Check metadata exists
         metadata_path = transform_dir / "dataset_metadata.json"
         if not metadata_path.exists():
             return False
-        
+
         try:
             with open(metadata_path) as f:
                 metadata = json.load(f)
             num_samples = metadata.get("num_samples", 0)
-            
+
             # Check storage files exist
             if self.storage_backend == "mmap":
                 mmap_path = transform_dir / "samples.mmap"
                 idx_path = transform_dir / "samples.idx.npy"
                 storage_metadata_path = transform_dir / "metadata.json"
-                
-                if not (mmap_path.exists() and idx_path.exists() and storage_metadata_path.exists()):
+
+                if not (
+                    mmap_path.exists()
+                    and idx_path.exists()
+                    and storage_metadata_path.exists()
+                ):
                     return False
             else:
                 # Check sample files exist
-                for idx in range(min(10, num_samples)):  # Sample check first 10
+                for idx in range(
+                    min(10, num_samples)
+                ):  # Sample check first 10
                     sample_path = transform_dir / f"sample_{idx:06d}.pt"
                     if not sample_path.exists():
                         return False
-            
+
             return True
         except (json.JSONDecodeError, KeyError, OSError):
             return False
@@ -1189,13 +1241,8 @@ class OnDiskInductivePreprocessor(Dataset):
                 f"Got: {split_params.learning_setting}"
             )
 
-        # Use existing split utility (it iterates over dataset via __iter__)
-        # This maintains O(1) memory as it processes samples one at a time.
-        # Note: The split utility extracts labels `[data.y for data in dataset]` which
-        # accumulates labels in memory (O(n) for labels), but labels are typically extremely small
-        # (single values/tensors) compared to full graph data (x, edge_index, etc.).
-        #
-        # Automatically use lazy splits for on-disk datasets (O(1) memory per split)
+        # Use lazy splits to maintain O(1) memory per split.
+        # Labels are accumulated (O(n)) but are typically small compared to graph data.
         return load_inductive_splits(self, split_params, use_lazy=True)
 
     def get_cache_stats(self) -> dict[str, Any]:
@@ -1277,10 +1324,12 @@ class OnDiskInductivePreprocessor(Dataset):
         with compression.
         """
         import time as time_module
+
         conversion_start = time_module.time()
-        
-        print("Converting to memory-mapped storage (parallel)...")
-        
+        print(
+            "[OnDiskInductivePreprocessor] Converting samples to memory-mapped storage (parallel mode)"
+        )
+
         # Determine number of workers (use same as preprocessing)
         if self.num_workers is None:
             # Auto-detect optimal worker count (same as ParallelProcessor)
@@ -1288,28 +1337,26 @@ class OnDiskInductivePreprocessor(Dataset):
             num_workers = max(1, cpu_count - 1)
         else:
             num_workers = max(1, self.num_workers)
-        
+
         if num_workers == 1 or self.num_samples < 1000:
             # Use sequential for small datasets or single worker
             self._convert_to_mmap_storage_sequential()
             return
-        
+
         # Divide samples into shards
         shard_size = (self.num_samples + num_workers - 1) // num_workers
         shards = []
-        
+
         for shard_id in range(num_workers):
             start_idx = shard_id * shard_size
             end_idx = min(start_idx + shard_size, self.num_samples)
-            
+
             if start_idx < self.num_samples:
                 shards.append((start_idx, end_idx, shard_id))
-        
-        print(f"  Processing {len(shards)} shards with {num_workers} workers...")
-        
+
         # TIMING: Shard creation
         shard_start = time_module.time()
-        
+
         # Process shards in parallel
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             futures = {
@@ -1323,7 +1370,7 @@ class OnDiskInductivePreprocessor(Dataset):
                 ): shard_id
                 for start_idx, end_idx, shard_id in shards
             }
-            
+
             # Wait for all shards to complete
             results = []
             total_errors = 0
@@ -1332,42 +1379,48 @@ class OnDiskInductivePreprocessor(Dataset):
                 try:
                     result = future.result()
                     results.append(result)
-                    total_errors += result['errors']
-                    if result['errors'] > 0:
-                        print(f"    ⚠️  Warning: {result['errors']} samples failed in this shard")
+                    total_errors += result["errors"]
                 except Exception as e:
-                    print(f"  ✗ Shard {shard_id} failed: {e}")
-                    raise RuntimeError(f"Shard {shard_id} conversion failed: {e}") from e
-        
+                    raise RuntimeError(
+                        f"Shard {shard_id} conversion failed: {e}"
+                    ) from e
+
         # Check if any samples failed
-        total_samples = sum(r['num_samples'] for r in results)
-        
+        total_samples = sum(r["num_samples"] for r in results)
+
         if total_errors > 0:
-            failure_rate = total_errors / total_samples if total_samples > 0 else 0
+            failure_rate = (
+                total_errors / total_samples if total_samples > 0 else 0
+            )
             raise RuntimeError(
                 f"Sample conversion failed during mmap storage creation: "
-                f"{total_errors}/{total_samples} samples failed ({failure_rate*100:.2f}%).\n"
+                f"{total_errors}/{total_samples} samples failed ({failure_rate * 100:.2f}%).\n"
                 f"All samples must convert successfully to maintain dataset integrity.\n"
                 f"Possible causes: corrupted .pt files, disk I/O errors, insufficient disk space.\n"
                 f"Check the error messages above for details."
             )
-        
+
         shard_time = time_module.time() - shard_start
-        print(f"  ⏱️  Shard creation: {shard_time:.2f}s ({self.num_samples/shard_time:.1f} samples/s)")
-        
+        print(
+            f"[OnDiskInductivePreprocessor] Shard creation completed in "
+            f"{shard_time:.2f}s "
+            f"({self.num_samples / max(shard_time, 1e-6):.1f} samples/s)"
+        )
+
         # TIMING: Merge phase
         merge_start = time_module.time()
-        
+
         # Merge shards into final mmap file
-        print("  Merging shards into final storage...")
         self._merge_shards(len(shards))
-        
+
         merge_time = time_module.time() - merge_start
-        print(f"  ⏱️  Merge: {merge_time:.2f}s")
-        
+        print(
+            f"[OnDiskInductivePreprocessor] Shard merge completed in {merge_time:.2f}s"
+        )
+
         # TIMING: Cleanup phase
         cleanup_start = time_module.time()
-        
+
         # Clean up shard directories
         for shard_id in range(len(shards)):
             shard_dir = self.processed_dir / f"_shard_{shard_id}"
@@ -1376,13 +1429,17 @@ class OnDiskInductivePreprocessor(Dataset):
                 for f in shard_dir.iterdir():
                     f.unlink()
                 shard_dir.rmdir()
-        
+
         cleanup_time = time_module.time() - cleanup_start
         total_conversion_time = time_module.time() - conversion_start
-        
-        print(f"  ⏱️  Cleanup: {cleanup_time:.2f}s")
-        print(f"  ⏱️  TOTAL conversion: {total_conversion_time:.2f}s")
-        print("   Conversion complete!")
+
+        print(
+            f"[OnDiskInductivePreprocessor] Cleanup completed in {cleanup_time:.2f}s"
+        )
+        print(
+            f"[OnDiskInductivePreprocessor] Total mmap conversion time: "
+            f"{total_conversion_time:.2f}s"
+        )
 
     def _convert_to_mmap_storage_sequential(self) -> None:
         """Sequential fallback for mmap conversion (small datasets or single worker)."""
@@ -1411,13 +1468,13 @@ class OnDiskInductivePreprocessor(Dataset):
             compression=self.compression,
             readonly=True,
         )
-    
+
     def _merge_shards(self, num_shards: int) -> None:
         """Merge shard mmap files into final consolidated mmap file using PARALLEL writes.
-        
+
         Uses parallel workers to write shards to non-overlapping offsets in a pre-allocated
         file for optimal performance (4-8× faster than sequential merge on multi-core systems).
- 
+
         Parameters
         ----------
         num_shards : int
@@ -1426,81 +1483,84 @@ class OnDiskInductivePreprocessor(Dataset):
         final_mmap_path = self.processed_dir / "samples.mmap"
         final_index_path = self.processed_dir / "samples.idx.npy"
         final_metadata_path = self.processed_dir / "metadata.json"
-        
+
         import time as time_module
-        
+
         # TIMING: Load shard metadata
         load_start = time_module.time()
-        
+
         # Pre-load all shard metadata and indices for vectorized operations
         shard_indices = []
         shard_sizes = []
         shard_metadata_list = []
         total_samples = 0
-        
+
         for shard_id in range(num_shards):
             shard_dir = self.processed_dir / f"_shard_{shard_id}"
             shard_mmap_path = shard_dir / "samples.mmap"
             shard_index_path = shard_dir / "samples.idx.npy"
             shard_metadata_path = shard_dir / "metadata.json"
-            
+
             # Load shard index and metadata
             shard_index = np.load(shard_index_path, allow_pickle=False)
-            with open(shard_metadata_path, 'r') as f:
+            with open(shard_metadata_path) as f:
                 shard_metadata = json.load(f)
-            
+
             shard_indices.append(shard_index)
             shard_sizes.append(shard_mmap_path.stat().st_size)
             shard_metadata_list.append(shard_metadata)
             total_samples += len(shard_index)
-        
+
         load_time = time_module.time() - load_start
-        print(f"    ⏱️  Load metadata: {load_time:.2f}s")
-        
+        print(
+            f"[OnDiskInductivePreprocessor] Loaded shard metadata in {load_time:.2f}s"
+        )
+
         # Vectorized: Compute cumulative offsets for all shards
         cumulative_offsets = np.concatenate(([0], np.cumsum(shard_sizes[:-1])))
         total_size = sum(shard_sizes)
-        
+
         # Pre-allocation
         prealloc_start = time_module.time()
-        
+
         # Pre-allocate final file with total size
         # This enables parallel writes to different offsets
-        print(f"  Pre-allocating {total_size / (1024*1024):.1f} MB for final storage...")
-        with open(final_mmap_path, 'wb') as f:
+        with open(final_mmap_path, "wb") as f:
             # Sparse file allocation (instant on most filesystems)
             f.seek(total_size - 1)
-            f.write(b'\0')
-        
+            f.write(b"\0")
+
         prealloc_time = time_module.time() - prealloc_start
-        print(f"    ⏱️  Pre-allocation: {prealloc_time:.2f}s")
-        
+        print(
+            f"[OnDiskInductivePreprocessor] Pre-allocated {total_size / (1024 * 1024):.1f} MB "
+            f"for final storage in {prealloc_time:.2f}s"
+        )
+
         # Parallel write
         write_start = time_module.time()
-        
+
         # Write shards to pre-allocated file using multiple workers
         # Each worker writes to its designated offset (no overlap = no corruption!)
         if num_shards == 1 or self.num_workers == 1:
             # Single shard or single worker: skip parallel overhead
-            print(f"  Copying shard data (sequential)...")
             result = _write_shard_to_offset(
                 self.processed_dir,
                 0,
                 final_mmap_path,
                 int(cumulative_offsets[0]),
-                shard_sizes[0]
+                shard_sizes[0],
             )
             if not result["success"]:
-                raise RuntimeError(f"Shard merge failed: {result.get('error', 'Unknown error')}")
+                raise RuntimeError(
+                    f"Shard merge failed: {result.get('error', 'Unknown error')}"
+                )
         else:
             # Determine number of workers (use same as preprocessing)
             if self.num_workers is None:
                 num_workers = max(1, (os.cpu_count() or 1) - 1)
             else:
                 num_workers = max(1, self.num_workers)
-            
-            print(f"  Writing {num_shards} shards in parallel ({num_workers} workers)...")
-            
+
             with ProcessPoolExecutor(max_workers=num_workers) as executor:
                 futures = {}
                 for shard_id in range(num_shards):
@@ -1509,11 +1569,13 @@ class OnDiskInductivePreprocessor(Dataset):
                         self.processed_dir,
                         shard_id,
                         final_mmap_path,
-                        int(cumulative_offsets[shard_id]),  # Each shard has unique offset
+                        int(
+                            cumulative_offsets[shard_id]
+                        ),  # Each shard has unique offset
                         shard_sizes[shard_id],
                     )
                     futures[future] = shard_id
-                
+
                 # Wait for all writes to complete
                 total_written = 0
                 for future in as_completed(futures):
@@ -1526,40 +1588,53 @@ class OnDiskInductivePreprocessor(Dataset):
                             )
                         total_written += result["bytes_written"]
                     except Exception as e:
-                        raise RuntimeError(f"Parallel shard merge failed for shard {shard_id}: {e}") from e
-                
+                        raise RuntimeError(
+                            f"Parallel shard merge failed for shard {shard_id}: {e}"
+                        ) from e
+
                 # Validate total bytes written
                 if total_written != total_size:
                     raise RuntimeError(
                         f"Incomplete merge: wrote {total_written}/{total_size} bytes"
                     )
-        
+
         write_time = time_module.time() - write_start
-        print(f"    ⏱️  Parallel write: {write_time:.2f}s")
-        
-        # Index computation
-        index_start = time_module.time()
-        
+        print(
+            f"[OnDiskInductivePreprocessor] Parallel write completed in {write_time:.2f}s"
+        )
+
         # Vectorized: Adjust all indices at once using NumPy broadcasting
         final_index = np.empty((total_samples, 2), dtype=np.int64)
         current_pos = 0
-        for shard_id, (shard_index, offset) in enumerate(zip(shard_indices, cumulative_offsets)):
+        for _shard_id, (shard_index, offset) in enumerate(
+            zip(shard_indices, cumulative_offsets, strict=True)
+        ):
             num_shard_samples = len(shard_index)
             # Vectorized offset adjustment
-            final_index[current_pos:current_pos + num_shard_samples, 0] = shard_index[:, 0] + offset
-            final_index[current_pos:current_pos + num_shard_samples, 1] = shard_index[:, 1]
+            final_index[current_pos : current_pos + num_shard_samples, 0] = (
+                shard_index[:, 0] + offset
+            )
+            final_index[current_pos : current_pos + num_shard_samples, 1] = (
+                shard_index[:, 1]
+            )
             current_pos += num_shard_samples
-        
+
         # Save final index
         np.save(final_index_path, final_index, allow_pickle=False)
-        
-        index_time = time_module.time() - index_start
-        print(f"    ⏱️  Index computation: {index_time:.2f}s")
-        
+
+        index_time = time_module.time() - load_start
+        print(
+            f"[OnDiskInductivePreprocessor] Index computation completed in {index_time:.2f}s"
+        )
+
         # Vectorized: Sum stats using NumPy
-        total_uncompressed = sum(m.get("total_uncompressed_bytes", 0) for m in shard_metadata_list)
-        total_compressed = sum(m.get("total_compressed_bytes", 0) for m in shard_metadata_list)
-        
+        total_uncompressed = sum(
+            m.get("total_uncompressed_bytes", 0) for m in shard_metadata_list
+        )
+        total_compressed = sum(
+            m.get("total_compressed_bytes", 0) for m in shard_metadata_list
+        )
+
         # Save final metadata as JSON
         metadata = {
             "compression": self.compression,
@@ -1572,10 +1647,10 @@ class OnDiskInductivePreprocessor(Dataset):
                 else 1.0
             ),
         }
-        
-        with open(final_metadata_path, 'w') as f:
+
+        with open(final_metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
-        
+
         # Reopen in readonly mode for subsequent reads
         self._storage = MemoryMappedStorage(
             data_dir=self.processed_dir,
