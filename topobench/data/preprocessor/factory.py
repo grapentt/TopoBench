@@ -151,6 +151,12 @@ def create_preprocessor(
     transforms_config: DictConfig | None = None,
     mode: Literal["auto", "inmemory", "ondisk"] = "auto",
     available_ram_gb: float | None = None,
+    force_reload: bool = False,
+    num_workers: int | None = None,
+    storage_backend: str = "mmap",
+    compression: str | None = "lz4",
+    batch_size: int = 32,
+    cache_size: int = 100,
     **kwargs,
 ) -> PreprocessorType:
     """Factory function for creating appropriate preprocessor.
@@ -172,11 +178,29 @@ def create_preprocessor(
         Processing mode:
         - "auto": Automatically choose based on dataset size and available RAM
         - "inmemory": Force in-memory preprocessing (standard PreProcessor)
-        - "ondisk": Force on-disk preprocessing
+        - "ondisk": Force on-disk preprocessing (OnDiskInductivePreprocessor)
         Default: "auto".
     available_ram_gb : float, optional
         Available RAM in GB for auto mode. If None, automatically detected.
         Default: None.
+    force_reload : bool, optional
+        If True, reprocess all samples even if cache exists (default: False).
+        Only used by on-disk preprocessors.
+    num_workers : int, optional
+        Number of parallel workers for preprocessing (default: None = auto-detect).
+        Only used by on-disk preprocessors.
+    storage_backend : str, optional
+        Storage backend: "mmap" (compressed) or "files" (fast) (default: "mmap").
+        Only used by OnDiskInductivePreprocessor.
+    compression : str, optional
+        Compression algorithm: "lz4", "zstd", or None (default: "lz4").
+        Only used by OnDiskInductivePreprocessor with mmap storage.
+    batch_size : int, optional
+        Batch size for parallel processing (default: 32).
+        Only used by on-disk preprocessors.
+    cache_size : int, optional
+        Number of samples to cache in memory during training (default: 100).
+        Only used by OnDiskInductivePreprocessor.
     **kwargs : dict
         Additional arguments passed to the preprocessor.
     
@@ -234,7 +258,20 @@ def create_preprocessor(
     
     if not use_ondisk:
         # Use standard in-memory PreProcessor
-        return PreProcessor(dataset, data_dir, transforms_config, **kwargs)
+        # Filter out OnDiskInductivePreprocessor-specific kwargs that InMemoryDataset doesn't accept
+        inmemory_kwargs = {}
+        allowed_inmemory_args = {'force_reload', 'log', 'transform', 'pre_transform', 'pre_filter'}
+        
+        # Add force_reload if specified (it's allowed by InMemoryDataset)
+        if force_reload:
+            inmemory_kwargs['force_reload'] = force_reload
+        
+        # Add any other allowed kwargs from **kwargs
+        for key, value in kwargs.items():
+            if key in allowed_inmemory_args:
+                inmemory_kwargs[key] = value
+        
+        return PreProcessor(dataset, data_dir, transforms_config, **inmemory_kwargs)
     
     # Use on-disk preprocessing
     is_transductive = _is_transductive(dataset)
@@ -261,5 +298,11 @@ def create_preprocessor(
             dataset=dataset,
             data_dir=data_dir,
             transforms_config=transforms_config,
-            **kwargs
+            force_reload=force_reload,
+            num_workers=num_workers,
+            storage_backend=storage_backend,
+            compression=compression,
+            batch_size=batch_size,
+            cache_size=cache_size,
+            **kwargs  # Pass any remaining kwargs
         )
