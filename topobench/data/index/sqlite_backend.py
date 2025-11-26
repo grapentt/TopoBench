@@ -10,8 +10,9 @@ structures. SQLite3 is used as the primary backend because:
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from topobench.data.index.base import AbstractIndexBackend
 
@@ -52,7 +53,7 @@ class SQLiteIndexBackend(AbstractIndexBackend):
     The database schema consists of two tables:
     - structures: (structure_id PRIMARY KEY, nodes_json TEXT)
     - node_index: (node_id INTEGER, structure_id INTEGER)
-    
+
     The node_index table is indexed for fast node → structure lookups.
 
     See Also
@@ -133,70 +134,70 @@ class SQLiteIndexBackend(AbstractIndexBackend):
         # Create index on node_id for fast lookups
         self.conn.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_node_id 
+            CREATE INDEX IF NOT EXISTS idx_node_id
             ON node_index(node_id)
             """
         )
 
         self.conn.commit()
 
-    def insert(self, structure_id: int, nodes: list[int]) -> None:
-        """Insert a structure with its constituent nodes.
+    def insert(self, clique_id: int, nodes: list[int]) -> None:
+        """Insert a clique with its constituent nodes.
 
         Parameters
         ----------
-        structure_id : int
-            Unique identifier for the structure.
+        clique_id : int
+            Unique identifier for the clique.
         nodes : list of int
-            Node IDs that comprise this structure.
+            Node IDs that comprise this clique.
         """
         # Insert into structures table
         nodes_json = json.dumps(sorted(nodes))
         self.conn.execute(
             "INSERT OR REPLACE INTO structures (structure_id, nodes_json) VALUES (?, ?)",
-            (structure_id, nodes_json),
+            (clique_id, nodes_json),
         )
 
         # Insert into node index
         self.conn.executemany(
             "INSERT INTO node_index (node_id, structure_id) VALUES (?, ?)",
-            [(node_id, structure_id) for node_id in nodes],
+            [(node_id, clique_id) for node_id in nodes],
         )
 
         self.conn.commit()
 
     def insert_batch(
-        self, structures: Iterator[tuple[int, list[int]]], batch_size: int = 10000
+        self, cliques: Iterator[tuple[int, list[int]]], batch_size: int = 10000
     ) -> None:
-        """Insert multiple structures efficiently using transactions.
+        """Insert multiple cliques efficiently using transactions.
 
         Parameters
         ----------
-        structures : Iterator of (int, list of int)
-            Iterator yielding (structure_id, nodes) tuples.
+        cliques : Iterator of (int, list of int)
+            Iterator yielding (clique_id, nodes) tuples.
         batch_size : int, optional
-            Number of structures to process in each chunk (default: 10000).
+            Number of cliques to process in each chunk (default: 10000).
             Prevents memory issues with large graphs by streaming insertion.
         """
-        # Process structures in chunks to avoid loading all into memory
+        # Process cliques in chunks to avoid loading all into memory
         structures_buffer = []
         node_index_buffer = []
-        
-        for struct_id, nodes in structures:
+
+        for struct_id, nodes in cliques:
             # Add to buffers
             structures_buffer.append(
                 (struct_id, json.dumps(sorted([int(n) for n in nodes])))
             )
-            node_index_buffer.extend([
-                (int(node_id), struct_id) for node_id in nodes
-            ])
-            
+            node_index_buffer.extend(
+                [(int(node_id), struct_id) for node_id in nodes]
+            )
+
             # When buffer reaches batch_size, flush to database
             if len(structures_buffer) >= batch_size:
                 self._flush_buffers(structures_buffer, node_index_buffer)
                 structures_buffer.clear()
                 node_index_buffer.clear()
-        
+
         # Flush remaining structures
         if structures_buffer:
             self._flush_buffers(structures_buffer, node_index_buffer)
@@ -214,7 +215,7 @@ class SQLiteIndexBackend(AbstractIndexBackend):
             List of (node_id, structure_id) tuples.
         """
         self.conn.execute("BEGIN TRANSACTION")
-        
+
         try:
             # Insert structures
             self.conn.executemany(
@@ -265,8 +266,8 @@ class SQLiteIndexBackend(AbstractIndexBackend):
                 SELECT DISTINCT s.structure_id, s.nodes_json
                 FROM structures s
                 WHERE s.structure_id IN (
-                    SELECT structure_id 
-                    FROM node_index 
+                    SELECT structure_id
+                    FROM node_index
                     WHERE node_id IN ({placeholders})
                 )
             """
@@ -292,15 +293,18 @@ class SQLiteIndexBackend(AbstractIndexBackend):
             """
 
             cursor = self.conn.execute(query, node_ids)
-            return [(struct_id, json.loads(nodes_json)) for struct_id, nodes_json in cursor]
+            return [
+                (struct_id, json.loads(nodes_json))
+                for struct_id, nodes_json in cursor
+            ]
 
-    def count_structures(self) -> int:
-        """Get total number of indexed structures.
+    def count_cliques(self) -> int:
+        """Get total number of indexed cliques.
 
         Returns
         -------
         int
-            Total structure count.
+            Total clique count.
         """
         cursor = self.conn.execute("SELECT COUNT(*) FROM structures")
         return cursor.fetchone()[0]
@@ -311,7 +315,7 @@ class SQLiteIndexBackend(AbstractIndexBackend):
         Returns
         -------
         bool
-            True if database file exists and contains structures.
+            True if database file exists and contains cliques.
         """
         if not self.db_path.exists():
             return False
@@ -329,6 +333,28 @@ class SQLiteIndexBackend(AbstractIndexBackend):
                 return cursor.fetchone()[0] > 0
         except sqlite3.Error:
             return False
+
+    def get_clique(self, clique_id: int) -> list[int] | None:
+        """Get nodes for a specific clique ID.
+
+        Parameters
+        ----------
+        clique_id : int
+            Clique ID to query.
+
+        Returns
+        -------
+        list of int or None
+            List of node IDs in the clique, or None if not found.
+        """
+        cursor = self.conn.execute(
+            "SELECT nodes_json FROM structures WHERE structure_id = ?",
+            (clique_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return json.loads(row[0])
 
     def clear(self) -> None:
         """Delete all indexed data.
