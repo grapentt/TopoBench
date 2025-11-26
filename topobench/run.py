@@ -12,7 +12,7 @@ from lightning import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf
 
-from topobench.data.preprocessor import PreProcessor
+from topobench.data.preprocessor import PreProcessor, create_preprocessor
 from topobench.dataloader import TBDataloader
 from topobench.utils import (
     RankedLogger,
@@ -164,8 +164,33 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     dataset, dataset_dir = dataset_loader.load()
     # Preprocess dataset and load the splits
     log.info("Instantiating preprocessor...")
-    transform_config = cfg.get("transforms", None)
-    preprocessor = PreProcessor(dataset, dataset_dir, transform_config)
+
+    # Get preprocessor config (supports both old 'transforms' and new 'preprocessor' style)
+    if "preprocessor" in cfg:
+        # New style: full preprocessor configuration with factory
+        preprocessor_cfg = cfg.preprocessor
+        mode = preprocessor_cfg.get("mode", "auto")  # Default to auto
+        data_dir = preprocessor_cfg.get("data_dir", dataset_dir)
+        transforms_config = preprocessor_cfg.get(
+            "transforms", preprocessor_cfg.get("transforms_config", None)
+        )
+
+        log.info(f"Using preprocessor factory with mode: {mode}")
+
+        # Use factory to create appropriate preprocessor
+        preprocessor = create_preprocessor(
+            dataset=dataset,
+            data_dir=data_dir,
+            transforms_config=transforms_config,
+            mode=mode,
+            force_reload=preprocessor_cfg.get("force_reload", False),
+            num_workers=preprocessor_cfg.get("num_workers", None),
+        )
+    else:
+        # Old style: just transforms config
+        transform_config = cfg.get("transforms", None)
+        preprocessor = PreProcessor(dataset, dataset_dir, transform_config)
+
     dataset_train, dataset_val, dataset_test = (
         preprocessor.load_dataset_splits(cfg.dataset.split_params)
     )
