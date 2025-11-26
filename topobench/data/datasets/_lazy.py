@@ -62,9 +62,9 @@ class LazySubset(Dataset):
 
     def indices(self) -> list[int]:
         """Return indices for this subset.
-        
+
         This method is required by torch_geometric.data.Dataset.
-        
+
         Returns
         -------
         list[int]
@@ -188,9 +188,9 @@ class LazyDataloadDataset(torch_geometric.data.Dataset):
 
     def indices(self) -> list[int]:
         """Return indices for this subset.
-        
+
         This method is required by torch_geometric.data.Dataset.
-        
+
         Returns
         -------
         list[int]
@@ -211,7 +211,7 @@ class LazyDataloadDataset(torch_geometric.data.Dataset):
         return len(self._indices)
 
     def get(self, idx: int) -> tuple[list, list]:
-        """Get sample at ACTUAL dataset index (not subset index).
+        """Get sample at actual dataset index (not subset index).
 
         This method is called by torch_geometric after it has already mapped
         the subset index through self.indices(). Therefore, idx is the actual
@@ -231,14 +231,14 @@ class LazyDataloadDataset(torch_geometric.data.Dataset):
         """
         # Load sample from source dataset (idx is already the actual index)
         data = self.dataset[idx]
-        
+
         # For inductive learning with separate datasets, add dummy masks if not present
         # This ensures compatibility with models that expect masks
-        if not hasattr(data, 'train_mask'):
+        if not hasattr(data, "train_mask"):
             data.train_mask = torch.tensor([1], dtype=torch.long)
-        if not hasattr(data, 'val_mask'):
+        if not hasattr(data, "val_mask"):
             data.val_mask = torch.tensor([0], dtype=torch.long)
-        if not hasattr(data, 'test_mask'):
+        if not hasattr(data, "test_mask"):
             data.test_mask = torch.tensor([0], dtype=torch.long)
 
         # Unpack into tuple format (DataloadDataset pattern)

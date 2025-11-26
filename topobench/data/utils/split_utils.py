@@ -202,6 +202,8 @@ def assign_train_val_test_mask_to_graphs(dataset, split_idx, use_lazy=False):
     """
     if use_lazy:
         # Use lazy splits for O(1) memory usage with TBDataloader compatibility
+        # Import here to avoid circular dependency
+        from topobench.data.datasets import LazyDataloadDataset
 
         return (
             LazyDataloadDataset(dataset, split_idx["train"]),
