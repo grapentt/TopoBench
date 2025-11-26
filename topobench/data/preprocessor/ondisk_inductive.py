@@ -1100,6 +1100,10 @@ class OnDiskInductivePreprocessor(Dataset):
         bool
             True if cached (all required files exist), False otherwise.
         """
+        # Force reload: Treat all transforms as uncached
+        if self.force_reload:
+            return False
+
         if not transform_dir.exists():
             return False
 
@@ -1387,7 +1391,6 @@ class OnDiskInductivePreprocessor(Dataset):
 
         # Check if any samples failed
         total_samples = sum(r["num_samples"] for r in results)
-
         if total_errors > 0:
             failure_rate = (
                 total_errors / total_samples if total_samples > 0 else 0
