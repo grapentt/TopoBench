@@ -178,13 +178,28 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
         log.info(f"Using preprocessor factory with mode: {mode}")
 
         # Use factory to create appropriate preprocessor
+        # Pass all preprocessor config options as kwargs
+        preprocessor_kwargs = {
+            "force_reload": preprocessor_cfg.get("force_reload", False),
+            "num_workers": preprocessor_cfg.get("num_workers", None),
+        }
+        
+        # Add OnDiskInductivePreprocessor-specific options if present
+        if "storage_backend" in preprocessor_cfg:
+            preprocessor_kwargs["storage_backend"] = preprocessor_cfg.storage_backend
+        if "compression" in preprocessor_cfg:
+            preprocessor_kwargs["compression"] = preprocessor_cfg.compression
+        if "batch_size" in preprocessor_cfg:
+            preprocessor_kwargs["batch_size"] = preprocessor_cfg.batch_size
+        if "cache_size" in preprocessor_cfg:
+            preprocessor_kwargs["cache_size"] = preprocessor_cfg.cache_size
+        
         preprocessor = create_preprocessor(
             dataset=dataset,
             data_dir=data_dir,
             transforms_config=transforms_config,
             mode=mode,
-            force_reload=preprocessor_cfg.get("force_reload", False),
-            num_workers=preprocessor_cfg.get("num_workers", None),
+            **preprocessor_kwargs
         )
     else:
         # Old style: just transforms config
